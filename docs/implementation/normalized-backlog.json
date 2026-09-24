@@ -30,8 +30,8 @@
             "BL-001-01"
           ],
           "implementation": "in_progress",
-          "progress": 92,
-          "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping are implemented. The PostgreSQL transaction adapter sets a transaction-local tenant, applies mandatory repository filters and is protected by forced RLS. The Fastify ingress derives the tenant only from the authenticated principal (single membership, or X-Active-Tenant choosing among signed memberships), rejects a tenant_id in tenant-scoped bodies before any lookup, checks membership before reading tenant state, and runs the handler inside the resolved context; outbox consumers bind the delivered event's tenant. TC-001-01-03 remains partial because worker/job context establishment and a real cache adapter are not yet integrated.",
+          "progress": 95,
+          "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping are implemented. The PostgreSQL transaction adapter sets a transaction-local tenant, applies mandatory repository filters and is protected by forced RLS. The Fastify ingress derives the tenant only from the authenticated principal (single membership, or X-Active-Tenant choosing among signed memberships), rejects a tenant_id in tenant-scoped bodies before any lookup, checks membership before reading tenant state, and runs the handler inside the resolved context; outbox consumers bind the delivered event's tenant. An in-process InMemoryKeyValueStore (decision D16: size-bounded LRU with TTL and clone-on-read/write) now backs TenantScopedCache, and tests prove tenant A/B separation, expiry, eviction and value isolation through it, so TC-001-01-03 is passing: the trusted tenant reaches the PostgreSQL transaction, the cache and the event envelope. Remaining: worker/job context establishment for scheduled jobs; a Redis adapter only when multi-instance cache coherence is needed.",
           "acceptance": [
             "Given verified membership in tenant A, when a request enters the application, tenant A is propagated through asynchronous work without accepting a body override.",
             "Given a principal without membership, access is denied before a domain transaction begins.",
@@ -54,7 +54,7 @@
               "id": "TC-001-01-03",
               "name": "Trusted tenant reaches transaction, cache and event envelope",
               "type": "integration",
-              "status": "partial"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E001",

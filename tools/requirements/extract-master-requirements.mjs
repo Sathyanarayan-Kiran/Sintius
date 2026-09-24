@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { phase0RequirementMappings } from "./phase0-requirement-mappings.mjs";
+import { loadImplementationEvidence } from "./implementation-evidence.mjs";
 
 const root = resolve(import.meta.dirname, "../..");
 const masterPath = resolve(root, "AI_Native_Subscription_Revenue_Platform_Master_Product_Specification.md");
@@ -197,6 +198,13 @@ const requirements = candidates.map((candidate, candidateIndex) => {
     }
   };
 });
+
+// Evidence is validated against executed-test status on every generation; an invalid claim fails.
+const implementationEvidence = loadImplementationEvidence(root, requirements);
+for (const requirement of requirements) {
+  const references = implementationEvidence.get(requirement.id);
+  if (references !== undefined) requirement.mappings.implementationEvidence = [...references];
+}
 
 const knownRequirementIds = new Set(requirements.map((requirement) => requirement.id));
 const allMappings = [...phase0RequirementMappings, ...mappingsFile.mappings, ...normalizedMappings];

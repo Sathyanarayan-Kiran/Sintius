@@ -174,3 +174,67 @@ Any provider works if it can:
 - run secret scanning (GitHub push protection already applies to this repository).
 
 GitHub Actions is the lowest-effort fit because the repository is already on GitHub, but this is left open as requested.
+
+---
+
+# Phase 0 closure decisions (D13–D16)
+
+**Status:** All four recommendations **accepted by the Product Owner on 2026-09-24** ("accept D13–D16"). These are the decisions that blocked closing Phase 0.
+
+| ID | Decision | Recommendation (accepted) | Blocks |
+|---|---|---|---|
+| D13 | CI provider | A: GitHub Actions with a PostgreSQL 17 service container | Every Phase 0 story ("tests run in CI"), P0-010 evidence |
+| D14 | Interim event transport (within ADR-009) | A: PostgreSQL-backed consumer queue behind `EventPublisher` | P0-007 completion |
+| D15 | Observability backend and Phase 0 scope (OpenTelemetry is already canonical) | A: OTel SDK + Collector; local Grafana stack; production backend chosen with the cloud | P0-002 metrics, P0-010 trace |
+| D16 | Scope of cache adapter and UI error copy | Cache: small in-process adapter now; UI copy: defer to the first UI story | P0-001, P0-002 closure |
+
+## D13. CI provider
+
+Requirements are listed in D12.
+
+| Option | Description | Trade-off |
+|---|---|---|
+| **A** | GitHub Actions: Node 24, PostgreSQL 17 service container, `npm ci` then the full gate; TAP and coverage uploaded as artifacts; branch protection requires the check on `master` | The repository is already on GitHub, so there is no new vendor. PR status checks work out of the box, and Claude sessions can react to CI failures on PRs. Private-repo minutes are metered per plan. |
+| B | GitLab CI or Bitbucket Pipelines | Needs mirroring or a repository move, with two sources of truth during transition. |
+| C | CircleCI or Buildkite | Mature, fast runners, but an extra vendor, secrets store and billing relationship for no current benefit. |
+| D | Self-hosted runner (any provider) | Full control and no metered minutes, but you operate and patch the runner, which is a security-sensitive host. |
+
+**Recommendation: A.** I would add `.github/workflows/ci.yml` and document the branch-protection setting, which you enable in GitHub settings. The first run also verifies the pinned Node 24 and PostgreSQL 17, which this session could only approximate.
+
+## D14. Interim event transport
+
+ADR-009 already decides: "a dispatcher publishes to an in-process/queue-based transport initially, migrating to a Kafka-compatible platform when volume, retention or multi-consumer replay needs exceed the simpler transport". Its stated risk is that the interim transport "must still guarantee at-least-once delivery and ordering-per-aggregate-key". Only the concrete interim transport is open.
+
+| Option | Description | Trade-off |
+|---|---|---|
+| **A** | PostgreSQL-backed consumer queue: the dispatcher's publisher writes each envelope to a per-consumer delivery table, and consumers lease from it (the same `SKIP LOCKED` pattern the outbox already proves), with `LISTEN/NOTIFY` wake-ups. Per-consumer dead-letter queues (D1) live here. | No new infrastructure. Delivery, ordering per aggregate and dead-lettering are provable with the existing PostgreSQL test harness. Throughput is bounded by the database, which is fine at MVP volume (SPIKE-05 sets the real numbers). |
+| B | Redis Streams or BullMQ | Fast and familiar, but new infrastructure, a separate durability model, and per-aggregate ordering to engineer ourselves. |
+| C | Managed cloud queue (SQS FIFO, Pub/Sub with ordering keys) | Operationally light and ordered, but it ties Phase 0 to a cloud provider that has not been chosen. |
+| D | Kafka-compatible now (Redpanda, MSK, Confluent) | The eventual target, but ADR-009 explicitly defers it; operating a distributed log is premature at MVP volume. |
+
+**Recommendation: A**, behind the existing `EventPublisher` port, with documented cutover triggers to a Kafka-compatible platform: sustained volume from SPIKE-05, retention or replay needs, or external consumers. Consumers already deduplicate through the inbox, so a later cutover can overlap safely.
+
+## D15. Observability backend and Phase 0 scope
+
+OpenTelemetry is already canonical (`05-logical-architecture.md`, SUB-0011, SUB-0018, SUB-0020; `platform/observability` in the repository structure). The open part is where telemetry goes and how much Phase 0 needs.
+
+| Option | Description | Trade-off |
+|---|---|---|
+| **A** | OTel Node SDK in `platform/observability`, exporting OTLP to an OpenTelemetry Collector. Local development gets a Compose Grafana stack (Tempo traces, Prometheus metrics, Loki logs). The production backend is chosen with the cloud/deployment decision; only the Collector's exporter config changes. | Vendor-neutral and matches the specs. Phase 0 proof uses an in-memory span exporter in tests, so CI needs no backend. |
+| B | Commit to a SaaS backend now (Datadog, Honeycomb, Grafana Cloud, New Relic) | Fastest to useful dashboards, but a contract and cost decision before production exists, and a risk of vendor-specific instrumentation creeping in. |
+| C | Structured logs only for Phase 0; traces and metrics later | Least work, but it cannot satisfy P0-010's "one trace spans ingress, transaction, replay, audit and dispatch" or the P0-002/P0-007 metrics. |
+
+**Recommendation: A.** Phase 0 scope:
+- trace spans across HTTP ingress, the command transaction, idempotent replay, audit and dispatch, all carrying correlation and causation IDs;
+- the metrics the backlog names: error counts by code, idempotency replay/conflict, outbox lag and dead letters, audit write failures;
+- structured logs with redaction;
+- a test proving no secret reaches spans or logs.
+
+## D16. Scope of the cache adapter and UI error copy
+
+Both are named in P0-001 and P0-002, but nothing consumes either today.
+
+| Item | Options | Recommendation |
+|---|---|---|
+| Tenant-scoped cache adapter (P0-001, TC-001-01-03) | A: small in-process, size-bounded, TTL cache implementing the existing tenant-scoped key contract; B: Redis-backed cache now; C: defer | **A.** It is cheap, needs no infrastructure and lets TC-001-01-03 pass honestly. Redis follows when multi-instance cache coherence is actually needed. |
+| UI mapping of error codes to user copy (P0-002 "UI behavior") | A: defer to the first admin/portal UI story, carrying the acceptance criterion forward; B: build a copy catalogue now with no UI to render it | **A.** No UI exists yet, so a catalogue built now would be untested. The problem catalogue already gives each code a stable title for the UI to map later. |

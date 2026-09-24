@@ -3,6 +3,7 @@ import test from "node:test";
 import { PlatformProblem } from "../../problem-model/src/index.ts";
 import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import {
+  InMemoryKeyValueStore,
   TenantScopedCache,
   actorId,
   currentTenantContext,
@@ -209,4 +210,39 @@ test("an adapter that binds the wrong tenant is rolled back and rejected", async
     isProblem("tenant_context_mismatch"),
   );
   assert.deepEqual(adapter.log, ["begin:tenant_B", "rollback"]);
+});
+
+test("TC-001-01-03 the in-process cache adapter keeps tenants apart, expires, evicts and never shares mutable values", async () => {
+  let now = 1_000_000;
+  const store = new InMemoryKeyValueStore<{ readonly plans: string[] }>({ maxEntries: 3, clock: () => now });
+  const cache = new TenantScopedCache(store, "catalog.plans");
+
+  await runWithTenantContext(contextFor(tenantA), async () => {
+    await cache.set(["list"], { plans: ["a1"] }, { ttlSeconds: 10 });
+    const read = await cache.get("list");
+    read!.plans.push("mutated");
+    assert.deepEqual(await cache.get("list"), { plans: ["a1"] }, "a caller cannot mutate the cached value");
+  });
+  await runWithTenantContext(contextFor(tenantB), async () => {
+    assert.equal(await cache.get("list"), undefined, "tenant B cannot read tenant A's entry");
+    await cache.set(["list"], { plans: ["b1"] });
+  });
+  await runWithTenantContext(contextFor(tenantA), async () => {
+    assert.deepEqual(await cache.get("list"), { plans: ["a1"] });
+    now += 10_000;
+    assert.equal(await cache.get("list"), undefined, "expired at its TTL");
+    await cache.set(["x"], { plans: [] });
+    await cache.set(["y"], { plans: [] });
+    await cache.get("x");
+    await cache.set(["z"], { plans: [] });
+  });
+  assert.equal(store.size, 3, "bounded to maxEntries");
+  await runWithTenantContext(contextFor(tenantB), async () => {
+    assert.equal(await cache.get("list"), undefined, "the least recently used entry (B's list) was evicted");
+  });
+  await runWithTenantContext(contextFor(tenantA), async () => {
+    assert.deepEqual(await cache.get("x"), { plans: [] }, "a recently read entry survives eviction");
+  });
+  assert.throws(() => new InMemoryKeyValueStore({ maxEntries: 0 }), RangeError);
+  await assert.rejects(store.set("k", { plans: [] }, { ttlSeconds: -1 }), RangeError);
 });

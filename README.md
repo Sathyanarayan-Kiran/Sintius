@@ -15,6 +15,8 @@ This repository is the TypeScript/Node.js 24 LTS implementation of the canonical
 - Append-only audit: immutable, tamper-evident events stamped from trusted context, allow-list redaction, a permissioned reader whose reads are audited, and adoption by tenant, role, approval and dead-letter commands. Writes use the RLS-protected PostgreSQL table with an INSERT-only application grant, and an integration test proves UPDATE, DELETE and TRUNCATE are denied to the application and dispatcher roles; a database reader remains outstanding.
 - Fastify HTTP ingress (`apps/api`): bearer authentication through the provider-neutral authentication service, tenant derived only from the principal (`X-Active-Tenant` selects among signed memberships), `X-Correlation-Id`/`X-Causation-Id` propagation into context, audit and events, `Idempotency-Key`, `If-Match`/`ETag`, `Retry-After`, strict body schemas and RFC 9457 problem+json for every failure. Routes: tenant provisioning/lifecycle and the test-only proof command. A PostgreSQL HTTP test proves one ingress correlation ID reaches the record, the audit row and the published event.
 - `platform/money`: the SPIKE-02 money foundation, proven by hand-computed golden cases (USD/INR, JPY, KWD) and seeded property suites cross-checked against an independent decimal oracle.
+- Implementation evidence: `docs/implementation/implementation-evidence.json` records which accepted requirements are implemented. A claim is accepted only if every mapped test is marked passing, exists as an automated test, and (in CI) passed in that run.
+- CI (decision D13): `.github/workflows/ci.yml` runs the full gate on Node 24 with a PostgreSQL 17 service and uploads TAP reports and requirement coverage as release-gate evidence.
 - Architecture manifest validation for bounded-context ownership.
 
 Node 24's native erasable-TypeScript support runs the code and tests directly; there is no build step. `npm run typecheck` runs the pinned TypeScript compiler (`tsc --noEmit`, strict) and is the first step of `npm run check`. Runtime dependencies are pinned: `pg` for PostgreSQL and `fastify` for HTTP.
@@ -24,6 +26,7 @@ Node 24's native erasable-TypeScript support runs the code and tests directly; t
 ```powershell
 npm.cmd run typecheck
 npm.cmd test
+npm.cmd run check:evidence   # CI: re-verifies implementation evidence against test reports
 npm.cmd run check:postgres
 npm.cmd run check:architecture
 npm.cmd run check

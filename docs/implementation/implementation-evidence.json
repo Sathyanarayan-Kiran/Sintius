@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "policy": "Editable source. A requirement counts as implemented only when it is accepted, a reviewer names the implementing code, and every test mapped to it is marked passing in implementation-roadmap-data.js, exists as an automated test titled with its ID, and (in CI) passed in that run. Validated by tools/requirements/implementation-evidence.mjs on every generation and by `npm run check:evidence` against CI test reports.",
+  "evidence": [
+    {
+      "requirementId": "MSR-058-C69192855F",
+      "reviewedAt": "2026-09-24",
+      "summary": "Duplicate-execution protection is a platform mechanism: createIdempotentExecutor requires a UUID Idempotency-Key, authorizes before lookup, hashes the canonical request and commits the claim, the protected effect and the stored response in one transaction; the PostgreSQL primary key serializes concurrent retries. Every mutating command that exists today (tenant provisioning and lifecycle, the foundation proof) runs through it. Scope: each future financial API must use the executor and add its own replay test, per the README guardrail.",
+      "code": [
+        "platform/idempotency/src/executor.ts",
+        "platform/idempotency/src/canonical.ts",
+        "platform/idempotency/infrastructure/postgres/store.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/002_idempotency.sql",
+        "apps/api/src/http/server.ts"
+      ]
+    },
+    {
+      "requirementId": "MSR-058-2CCE1DD0DC",
+      "reviewedAt": "2026-09-24",
+      "summary": "An identical request with the same key replays the stored response without re-executing the effect; a concurrent duplicate is serialized by the database key and a changed payload under the same key is rejected with 409. Proven for exact replay and a 12-request race on PostgreSQL. Scope: charges do not exist yet; the charge commands must use this executor and add their own replay test.",
+      "code": [
+        "platform/idempotency/src/executor.ts",
+        "platform/idempotency/infrastructure/postgres/store.ts"
+      ]
+    },
+    {
+      "requirementId": "MSR-100-D1A3F8F46A",
+      "reviewedAt": "2026-09-24",
+      "summary": "Retries never repeat a committed effect: the idempotency claim, the effect, the audit record, the outbox event and the stored response commit atomically, so a retry either replays the stored response or, after a rollback, executes exactly once. Proven by exact-replay and concurrent-retry tests on PostgreSQL. Scope: applies to charges once charge commands exist; they must add their own replay test.",
+      "code": [
+        "platform/idempotency/src/executor.ts",
+        "platform/idempotency/infrastructure/postgres/store.ts",
+        "modules/identity-tenant/infrastructure/postgres/tenant-persistence.ts"
+      ]
+    }
+  ]
+}
