@@ -61,6 +61,8 @@ test("TC-001-05-01 the problem catalog is a stable published contract", () => {
     ["idempotency_key_invalid", 400, "Idempotency key invalid"],
     ["idempotency_key_reused_with_different_payload", 409, "Idempotency key reused with different payload"],
     ["request_in_progress", 409, "Request in progress"],
+    ["dead_letter_not_resolvable", 409, "Dead letter not resolvable"],
+    ["dead_letter_reason_required", 422, "Reason required"],
     ["tenant_context_missing", 500, "Tenant context required"],
     ["tenant_context_mismatch", 500, "Tenant context mismatch"],
     ["internal_error", 500, "Internal error"],

@@ -23,7 +23,7 @@ Key non-negotiables from that file:
 - `npm run check` = check:architecture, check:roadmap, check:requirements, test.
 - Code style: ESM, zero runtime dependencies, erasable TypeScript only (no enums, namespaces or parameter properties; use `import type`, `#private` fields), tests run natively with `node --test tests/all.test.ts`. Every new test file must be imported from `tests/all.test.ts`.
 - Modules may not import other modules' internals; `tools/architecture-lint` validates each `module.json` (ownedTables, publishedEvents, allowedModuleDependencies).
-- Baseline at handover: `npm run check` passes, 92 of 92 tests. Run it before editing and confirm.
+- Baseline at handover: `npm run check` passes, 105 of 105 tests. Run it before editing and confirm.
 
 ## 3. What exists now (verify by reading, do not trust this list blindly)
 
@@ -34,6 +34,7 @@ Key non-negotiables from that file:
 - `modules/identity-tenant` authentication slice (P0-004 / US-BL-002-02 and US-BL-002-04): provider-neutral verifier, policy and revocation ports plus interactive OIDC/SAML and workload authentication policy. It enforces mechanism, issuer, audience, expiry/not-before, MFA, revocation, tenant binding, workload operation scopes and separation from interactive sessions. Authenticated credential/audience/scope data propagates into tenant and platform contexts, and nested context replacement cannot change it. Tests use a verifier test double; no production cryptographic/provider adapter or durable session store exists.
 - P0-005 / US-BL-002-03, split by ownership. `modules/identity-tenant`: `domain/authorization.ts` (frozen permission catalog, deny-by-default `effectivePermissions`, fail-closed ABAC `constraintsSatisfied`), `application/authorization.ts` (`createTenantAuthorizer` with live role lookup so revocation applies on the next command; workload principals need explicit scopes; ABAC only narrows; `createRoleAdministration` requiring `tenant:role:assign`, no self-change), ports in `authorization-ports.ts`. `modules/audit-governance` (owns `approval_request`; `approval_policy` stays with identity-tenant and is read through a port): `domain/approval.ts` (PENDING/APPROVED/REJECTED/EXPIRED/CANCELLED, separation of duties, distinct approvers, exact action/resource/version match, version CAS, cancel, expire) and `application/approval-commands.ts` (propose/decide/cancel; deciding needs an interactive principal with MFA; atomic decision + audit + outbox). `TenantContext` and `PlatformCommandContext` now carry `assurance`. Test doubles: `identity-tenant/tests/in-memory-security.ts`, `audit-governance/tests/in-memory-approvals.ts`.
 - `platform/idempotency` (P0-006 / US-BL-001-02): `canonical.ts` (deterministic hashing), `ports.ts` (`IdempotencyStore` atomic-claim contract, maintenance and persistence ports), `executor.ts` (`createIdempotentExecutor`: validates key and scope, rejects tenant identity in payload, authorizes BEFORE lookup, claim then work then complete in one transaction, replay/409/in-progress mapping). Module unit-of-work types must expose an `idempotency: IdempotencyStore`. `tests/in-memory-idempotency.ts` is a TEST DOUBLE that models per-key serialization.
+- `platform/outbox` (P0-007 / US-BL-001-03): `ports.ts` (`OutboxWriter`, `OutboxStore` lease contract, `EventPublisher`, `InboxStore`), `dispatcher.ts` (`createOutboxDispatcher`, `defaultRetryDelaySeconds`), `inbox.ts` (`createIdempotentConsumer`). `tests/in-memory-outbox.ts` is a TEST DOUBLE. The existing modules still write to their own local outbox-writer types; they are structurally compatible with `OutboxWriter` but not yet wired to it.
 - `modules/identity-tenant/tests/in-memory-persistence.ts` is a TEST DOUBLE. It is not evidence of PostgreSQL atomicity.
 
 ## 4. Durable status at handover (in `docs/implementation/implementation-roadmap-data.js`)
@@ -55,6 +56,8 @@ Key non-negotiables from that file:
 
 - US-BL-001-02: progress 50; all three roadmap tests `partial`. Remaining: PostgreSQL unique-index adapter and migration, HTTP ingress (header, Retry-After), failed-final storage, per-tenant retention source, cleanup job, metrics. The tenant lifecycle commands are not yet wrapped in the executor.
 
+- US-BL-001-03: progress 45; both roadmap tests `partial`. Dead-letter policy (decided): a dead-lettered event blocks later events of the same aggregate, the dispatcher never skips by itself, and `createDeadLetterOperations` lets an authorized operator requeue or skip with a mandatory reason and operator id (skip keeps the envelope, unblocks the stream, and is recorded on the entry). `OutboxStats.blockedStreams` and `oldestDeadLetterAgeSeconds` are the alert signals. Remaining: a permission-catalog entry and audit linkage for dead-letter resolution (P0-005/P0-008), consumer-side `aggregate_version` gap detection after a skip, PostgreSQL adapter (SKIP LOCKED), broker adapter (undecided), schema-registry validation, consumer DLQ, dispatcher runtime and lease renewal, dispatcher RLS role, metrics export, retention.
+
 ## 5. Recommended next tranche
 
 Do these in order, one bounded tranche at a time, and stop to report after each.
@@ -62,9 +65,9 @@ Do these in order, one bounded tranche at a time, and stop to report after each.
 1. **PostgreSQL adapter for identity-tenant (finishes TC-001-01-03 and TC-002-01-03).** Blocked on one decision: how Postgres runs locally and in CI (Docker Compose, testcontainers, or a hosted instance). Propose an option with trade-offs and ask the Product Owner; do not pick silently. Once decided: implement `TenantPersistence`/`TenantUnitOfWork` against real PostgreSQL, the tables owned by identity-tenant (`tenant`, `tenant_identity_provider`, `tenant_role`, `tenant_role_assignment`), migrations, and an integration test proving atomic commit and rollback plus tenant-bound transaction binding. Only then mark those two tests `passing`.
 2. **Finish P0-004 production adapters.** This requires explicit provider/runtime choices for OIDC/JWKS, SAML certificates and workload signed-token or mTLS verification; do not silently select vendors or libraries. Add durable session/revocation persistence and authentication audit facts before changing the two partial roadmap tests to passing.
 3. ~~P0-005~~ done at unit level; production adapters ride with item 1.
-4. ~~P0-006~~ done at unit level. **P0-007** outbox relay (next decision-independent tranche), **P0-008** audit, **P0-009** row-level security, **P0-010** proof command. Specs are in `docs/implementation/phase-0-backlog.md`.
+4. ~~P0-006~~ done at unit level. ~~P0-007~~ done at unit level. **P0-008** audit (next decision-independent tranche), **P0-008** audit, **P0-009** row-level security, **P0-010** proof command. Specs are in `docs/implementation/phase-0-backlog.md`.
 
-If the PostgreSQL and production identity-provider decisions are not yet made, start with P0-007 and record both blockers.
+If the PostgreSQL and production identity-provider decisions are not yet made, start with P0-008 and record both blockers.
 
 ## 6. Definition of done for any tranche
 
