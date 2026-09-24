@@ -179,9 +179,9 @@ GitHub Actions is the lowest-effort fit because the repository is already on Git
 
 # Phase 0 closure decisions (D13–D16)
 
-**Status:** Proposed 2026-09-24, awaiting Product Owner confirmation. These are the decisions that block closing Phase 0.
+**Status:** All four recommendations **accepted by the Product Owner on 2026-09-24** ("accept D13–D16"). These are the decisions that blocked closing Phase 0.
 
-| ID | Decision | Recommendation | Blocks |
+| ID | Decision | Recommendation (accepted) | Blocks |
 |---|---|---|---|
 | D13 | CI provider | A: GitHub Actions with a PostgreSQL 17 service container | Every Phase 0 story ("tests run in CI"), P0-010 evidence |
 | D14 | Interim event transport (within ADR-009) | A: PostgreSQL-backed consumer queue behind `EventPublisher` | P0-007 completion |
