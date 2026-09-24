@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.com/events/envelope.schema.json",
+  "title": "Domain event envelope",
+  "description": "Shared CloudEvents-style envelope for all domain events. See docs/pre-implementation/14-event-taxonomy.md section 3.",
+  "type": "object",
+  "required": [
+    "id", "source", "specversion", "type", "time", "datacontenttype",
+    "tenant_id", "aggregate_type", "aggregate_id", "aggregate_version",
+    "correlation_id", "actor", "occurred_at", "recorded_at",
+    "data_classification", "data"
+  ],
+  "properties": {
+    "id": { "type": "string", "description": "Globally unique event ID (ULID)." },
+    "source": { "type": "string", "format": "uri-reference" },
+    "specversion": { "const": "1.0" },
+    "type": {
+      "type": "string",
+      "pattern": "^com\\.subrevos\\.[a-z_]+\\.[a-z_]+\\.v[0-9]+$"
+    },
+    "time": { "type": "string", "format": "date-time" },
+    "datacontenttype": { "const": "application/json" },
+    "dataschema": { "type": "string", "format": "uri" },
+    "subject": { "type": "string" },
+    "tenant_id": { "type": "string" },
+    "aggregate_type": { "type": "string" },
+    "aggregate_id": { "type": "string" },
+    "aggregate_version": { "type": "integer", "minimum": 1 },
+    "correlation_id": { "type": "string" },
+    "causation_id": { "type": ["string", "null"] },
+    "actor": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "enum": ["USER", "SERVICE", "SYSTEM"] },
+        "id": { "type": "string" },
+        "delegated_by": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "data_classification": {
+      "enum": ["RESTRICTED_FINANCIAL", "CONFIDENTIAL_BUSINESS", "INTERNAL_OPERATIONAL", "PUBLIC"]
+    },
+    "data": { "type": "object" }
+  },
+  "additionalProperties": false
+}

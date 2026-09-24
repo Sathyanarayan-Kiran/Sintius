@@ -1,0 +1,10 @@
+{
+  "name": "@sintius/identity-tenant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./domain/tenant.ts",
+    "./application": "./application/tenant-commands.ts"
+  }
+}

@@ -1,0 +1,763 @@
+openapi: 3.1.0
+info:
+  title: Subscription & Revenue Operating System — MVP vertical slice
+  version: "1.0.0"
+  description: >
+    Representative, non-exhaustive OpenAPI contract for the MVP vertical slice
+    referenced in docs/pre-implementation/13-api-specification.md section 17.
+    It illustrates encoding, error, idempotency, and command-endpoint
+    conventions; it is not the complete MVP surface (see section 16 of that
+    document for the full resource catalog).
+servers:
+  - url: https://api.example.com/v1
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: Expected row_version (optimistic concurrency), quoted per RFC 9110 ETag syntax.
+      schema:
+        type: string
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 25
+    Expand:
+      name: expand
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Comma-separated dot-path expansion list, max depth 2.
+
+  schemas:
+    Money:
+      type: object
+      required: [amount_minor, currency]
+      properties:
+        amount_minor:
+          type: integer
+          format: int64
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+      additionalProperties: false
+
+    Quantity:
+      type: object
+      required: [value, unit]
+      properties:
+        value:
+          type: string
+          description: Fixed-precision decimal encoded as a string; never a JSON number.
+          pattern: "^-?\\d+(\\.\\d+)?$"
+        unit:
+          type: string
+      additionalProperties: false
+
+    Problem:
+      type: object
+      required: [type, title, status, code, correlation_id]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        code:
+          type: string
+        detail:
+          type: string
+        correlation_id:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              code:
+                type: string
+              message:
+                type: string
+
+    ListEnvelope:
+      type: object
+      required: [data, has_more]
+      properties:
+        data:
+          type: array
+          items: {}
+        next_cursor:
+          type: string
+          nullable: true
+        has_more:
+          type: boolean
+
+    Customer:
+      type: object
+      required: [id, tenant_id, display_name, status, row_version]
+      properties:
+        id: { type: string }
+        tenant_id: { type: string }
+        display_name: { type: string }
+        status:
+          type: string
+          enum: [PROSPECT, ACTIVE, SUSPENDED, CLOSED]
+        external_references:
+          type: array
+          items:
+            type: object
+            properties:
+              system: { type: string }
+              value: { type: string }
+        row_version: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    CustomerCreateRequest:
+      type: object
+      required: [display_name]
+      properties:
+        display_name: { type: string }
+        external_references:
+          type: array
+          items:
+            type: object
+            properties:
+              system: { type: string }
+              value: { type: string }
+
+    Account:
+      type: object
+      required: [id, customer_id, currency, status, row_version]
+      properties:
+        id: { type: string }
+        customer_id: { type: string }
+        account_number: { type: string }
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+        payment_terms_days: { type: integer }
+        status:
+          type: string
+          enum: [ACTIVE, ON_HOLD, CLOSED]
+        row_version: { type: integer }
+
+    AccountCreateRequest:
+      type: object
+      required: [customer_id, currency]
+      properties:
+        customer_id: { type: string }
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+        payment_terms_days: { type: integer, default: 30 }
+
+    Subscription:
+      type: object
+      required: [id, account_id, state, row_version]
+      properties:
+        id: { type: string }
+        subscription_number: { type: string }
+        account_id: { type: string }
+        plan_id: { type: string }
+        state:
+          type: string
+          description: Canonical state per docs/pre-implementation/08-subscription-state-machine.md section 1. Closed enum.
+          enum:
+            - DRAFT
+            - PENDING_ACTIVATION
+            - TRIALING
+            - ACTIVE
+            - PAUSED
+            - SUSPENDED
+            - CANCELLED
+            - TERMINATED
+            - EXPIRED
+        cancel_at: { type: string, format: date-time, nullable: true }
+        row_version: { type: integer }
+
+    SubscriptionCreateRequest:
+      type: object
+      required: [account_id, plan_id, items]
+      properties:
+        account_id: { type: string }
+        plan_id: { type: string }
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+        items:
+          type: array
+          items:
+            type: object
+            required: [product_version_id, price_component_id, quantity]
+            properties:
+              product_version_id: { type: string }
+              price_component_id: { type: string }
+              quantity:
+                $ref: "#/components/schemas/Quantity"
+
+    SubscriptionActionRequest:
+      type: object
+      properties:
+        effective_at: { type: string, format: date-time }
+        reason_code: { type: string }
+        approval_reference: { type: string, nullable: true }
+
+    UsageEvent:
+      type: object
+      required: [source, source_event_id, meter_id, subscription_item_id, event_time, quantity]
+      properties:
+        source: { type: string }
+        source_event_id: { type: string }
+        meter_id: { type: string }
+        subscription_item_id: { type: string }
+        event_time: { type: string, format: date-time }
+        quantity:
+          $ref: "#/components/schemas/Quantity"
+        dimensions:
+          type: object
+          additionalProperties: { type: string }
+
+    UsageEventBatchRequest:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/UsageEvent"
+
+    UsageEventBatchResult:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              source_event_id: { type: string }
+              status:
+                type: string
+                enum: [ACCEPTED, REJECTED, DUPLICATE, QUARANTINED]
+              usage_event_id: { type: string, nullable: true }
+              code: { type: string, nullable: true }
+              detail: { type: string, nullable: true }
+
+    Invoice:
+      type: object
+      required: [id, account_id, document_state, currency, total, row_version]
+      properties:
+        id: { type: string }
+        invoice_number: { type: string, nullable: true, description: "Null until POSTED." }
+        account_id: { type: string }
+        document_state:
+          type: string
+          description: Per docs/pre-implementation/09-invoice-state-machine.md section 2. Closed enum.
+          enum: [DRAFT, PENDING_APPROVAL, POSTED, VOIDED, CANCELLED]
+        receivable_state:
+          type: string
+          nullable: true
+          enum: [OPEN, PARTIALLY_PAID, PAID, DISPUTED, WRITTEN_OFF, REVERSED]
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+        total:
+          $ref: "#/components/schemas/Money"
+        due_date: { type: string, format: date, nullable: true }
+        row_version: { type: integer }
+
+    InvoiceLine:
+      type: object
+      properties:
+        id: { type: string }
+        invoice_id: { type: string }
+        description: { type: string }
+        quantity:
+          $ref: "#/components/schemas/Quantity"
+        amount:
+          $ref: "#/components/schemas/Money"
+        charge_id: { type: string, nullable: true }
+        calculation_trace_id: { type: string, nullable: true }
+
+    Payment:
+      type: object
+      required: [id, account_id, state, amount, row_version]
+      properties:
+        id: { type: string }
+        account_id: { type: string }
+        state:
+          type: string
+          description: Per docs/pre-implementation/10-payment-state-machine.md section 2. Closed enum.
+          enum:
+            - CREATED
+            - PROCESSING
+            - REQUIRES_ACTION
+            - PENDING
+            - RETRY_SCHEDULED
+            - SUCCEEDED
+            - FAILED
+            - CANCELLED
+            - EXPIRED
+        amount:
+          $ref: "#/components/schemas/Money"
+        payment_method_id: { type: string }
+        row_version: { type: integer }
+
+    PaymentCreateRequest:
+      type: object
+      required: [account_id, amount, payment_method_id, purpose]
+      properties:
+        account_id: { type: string }
+        amount:
+          $ref: "#/components/schemas/Money"
+        payment_method_id: { type: string }
+        purpose:
+          type: object
+          description: Target invoice(s)/receivable(s) this payment intends to satisfy.
+          properties:
+            invoice_ids:
+              type: array
+              items: { type: string }
+
+    Job:
+      type: object
+      properties:
+        job_id: { type: string }
+        status:
+          type: string
+          enum: [PENDING, RUNNING, COMPLETED, COMPLETED_WITH_ERRORS, FAILED]
+        progress:
+          type: object
+          properties:
+            processed: { type: integer }
+            total: { type: integer, nullable: true }
+        result_url: { type: string, nullable: true }
+        status_url: { type: string }
+
+  responses:
+    ProblemResponse:
+      description: Canonical error/problem response.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+paths:
+  /customers:
+    get:
+      operationId: listCustomers
+      tags: [Customers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ListEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Customer" }
+    post:
+      operationId: createCustomer
+      tags: [Customers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomerCreateRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+        "409":
+          $ref: "#/components/responses/ProblemResponse"
+
+  /customers/{id}:
+    get:
+      operationId: getCustomer
+      tags: [Customers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+        "404":
+          $ref: "#/components/responses/ProblemResponse"
+
+  /accounts:
+    post:
+      operationId: createAccount
+      tags: [Accounts]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AccountCreateRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+
+  /accounts/{id}/balance:
+    get:
+      operationId: getAccountBalance
+      tags: [Accounts]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  open_amount: { $ref: "#/components/schemas/Money" }
+                  overdue_amount: { $ref: "#/components/schemas/Money" }
+                  credit_balance: { $ref: "#/components/schemas/Money" }
+
+  /subscriptions:
+    post:
+      operationId: createSubscription
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubscriptionCreateRequest" }
+      responses:
+        "201":
+          description: Created in DRAFT state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subscription" }
+
+  /subscriptions/{id}/submit:
+    post:
+      operationId: submitSubscription
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubscriptionActionRequest" }
+      responses:
+        "200":
+          description: Transitioned to PENDING_ACTIVATION.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subscription" }
+        "409":
+          $ref: "#/components/responses/ProblemResponse"
+        "412":
+          $ref: "#/components/responses/ProblemResponse"
+
+  /subscriptions/{id}/activate:
+    post:
+      operationId: activateSubscription
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubscriptionActionRequest" }
+      responses:
+        "200":
+          description: Transitioned to TRIALING or ACTIVE.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subscription" }
+
+  /subscriptions/{id}/cancel:
+    post:
+      operationId: cancelSubscription
+      tags: [Subscriptions]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubscriptionActionRequest" }
+      responses:
+        "200":
+          description: Cancellation scheduled or effective per effective_at.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subscription" }
+
+  /usage-events:batch:
+    post:
+      operationId: batchIngestUsageEvents
+      tags: [Usage]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UsageEventBatchRequest" }
+      responses:
+        "200":
+          description: Batch processed; see per-item disposition.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageEventBatchResult" }
+
+  /billing-runs:
+    post:
+      operationId: startBillingRun
+      tags: [Invoices]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Accepted; poll /jobs/{job_id}.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+
+  /invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [Invoices]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/Expand"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invoice" }
+        "404":
+          $ref: "#/components/responses/ProblemResponse"
+
+  /invoices/{id}/finalize:
+    post:
+      operationId: finalizeInvoice
+      tags: [Invoices]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Transitioned to POSTED; receivable and journal transaction created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invoice" }
+        "409":
+          description: Blocked by stale tax quote, missing approval, or duplicate inclusion.
+          $ref: "#/components/responses/ProblemResponse"
+
+  /invoices/{id}/lines/{lineId}:
+    get:
+      operationId: getInvoiceLine
+      tags: [Invoices]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: lineId
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/Expand"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvoiceLine" }
+
+  /payments:
+    post:
+      operationId: createPayment
+      tags: [Payments]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PaymentCreateRequest" }
+      responses:
+        "201":
+          description: Logical payment and first attempt created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "409":
+          description: request_in_progress or idempotency_key_reused_with_different_payload.
+          $ref: "#/components/responses/ProblemResponse"
+
+  /payments/{id}:
+    get:
+      operationId: getPayment
+      tags: [Payments]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+
+  /accounts/{id}/collection-summary:
+    get:
+      operationId: getCollectionSummary
+      tags: [Collections]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Payment & Collections Intelligence summary (MVP differentiator, master spec section 87).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upcoming_amount: { $ref: "#/components/schemas/Money" }
+                  payment_risk_band:
+                    type: string
+                    enum: [LOW, MEDIUM, HIGH]
+                  preferred_channel:
+                    type: string
+                  next_best_action:
+                    type: object
+                    properties:
+                      action_type: { type: string }
+                      reason_codes:
+                        type: array
+                        items: { type: string }
+                      policy_version: { type: string }
+
+  /jobs/{jobId}:
+    get:
+      operationId: getJob
+      tags: [Jobs]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }

@@ -1,0 +1,56 @@
+{
+  "captured_at": "2026-09-23",
+  "environment": {
+    "os": "Microsoft Windows NT 10.0.26200.0",
+    "architecture": "x64",
+    "logical_processors_visible": 8
+  },
+  "workload": {
+    "iterations_per_run": 500000,
+    "runs": 3,
+    "features": [
+      "18-decimal fixed-point rates",
+      "allowance",
+      "three graduated tiers",
+      "17/31 proration",
+      "7.25 percent discount",
+      "minimum and cap",
+      "HALF_UP cents rounding"
+    ],
+    "expected_checksum": "2675064066"
+  },
+  "results": [
+    {
+      "candidate": "TypeScript/Node proxy",
+      "runtime": "Node.js v24.11.1",
+      "arithmetic": "BigInt fixed-point scale=18",
+      "operations_per_second": [1863449, 1841445, 1439406],
+      "median_operations_per_second": 1841445,
+      "checksum": "2675064066"
+    },
+    {
+      "candidate": "Kotlin/JVM proxy",
+      "runtime": "OpenJDK 17.0.20 Java benchmark",
+      "arithmetic": "BigInteger fixed-point scale=18",
+      "operations_per_second": [878391, 713998, 753772],
+      "median_operations_per_second": 753772,
+      "checksum": "2675064066"
+    },
+    {
+      "candidate": "Go",
+      "runtime": "Go 1.26.5",
+      "arithmetic": "math/big.Int fixed-point scale=18",
+      "operations_per_second": [387597, 274206, 497755],
+      "median_operations_per_second": 387597,
+      "checksum": "2675064066"
+    }
+  ],
+  "limitations": [
+    "Directional microbenchmark, not a production capacity test",
+    "No database, network, framework, JSON, tracing, or contention cost",
+    "Kotlin candidate was proxied with Java because kotlinc was not installed",
+    "No third-party decimal library was evaluated; that is SPIKE-02",
+    "SPIKE-05 throughput and burst targets are still open"
+  ]
+}
+

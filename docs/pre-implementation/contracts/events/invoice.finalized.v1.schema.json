@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.com/events/invoice.finalized.v1.json",
+  "title": "invoice.finalized.v1",
+  "description": "Public domain event. Invoice document transitioned to POSTED per docs/pre-implementation/09-invoice-state-machine.md section 6.",
+  "allOf": [
+    { "$ref": "https://schemas.example.com/events/envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "com.subrevos.invoice.finalized.v1" },
+        "data": {
+          "type": "object",
+          "required": [
+            "invoice_id", "invoice_number", "account_id", "currency",
+            "total_amount_minor", "due_date", "receivable_id", "journal_transaction_id"
+          ],
+          "properties": {
+            "invoice_id": { "type": "string" },
+            "invoice_number": { "type": "string" },
+            "account_id": { "type": "string" },
+            "legal_entity_id": { "type": ["string", "null"] },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+            "total_amount_minor": { "type": "integer" },
+            "invoice_date": { "type": "string", "format": "date" },
+            "due_date": { "type": "string", "format": "date" },
+            "receivable_id": { "type": "string" },
+            "journal_transaction_id": { "type": "string" },
+            "billing_run_id": { "type": ["string", "null"] },
+            "line_count": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

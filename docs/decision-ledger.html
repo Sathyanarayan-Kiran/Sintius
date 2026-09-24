@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Decision Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F4F2ED; --ink:#14171C; --ink-soft:#4B5058; --surface:#EAE7DE; --surface-2:#DFDBCE;
+    --line:#D8D4C8; --line-strong:#C4BFAF;
+    --accent:#A0631A; --accent-ink:#7A4B14; --accent-soft:#EFDCC0;
+    --decided:#1F7A5C; --decided-soft:#D7ECE3;
+    --deferred:#9C4A4A; --deferred-soft:#F1DCDC;
+    --shadow: 0 1px 2px rgba(20,23,28,.06), 0 4px 14px rgba(20,23,28,.05);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#0F1115; --ink:#E7E4DA; --ink-soft:#9CA0A8; --surface:#171A20; --surface-2:#1E222A;
+      --line:#262A32; --line-strong:#333844;
+      --accent:#D9A54B; --accent-ink:#F0C378; --accent-soft:#3A2C15;
+      --decided:#4CBE95; --decided-soft:#173327;
+      --deferred:#E08585; --deferred-soft:#341C1C;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0F1115; --ink:#E7E4DA; --ink-soft:#9CA0A8; --surface:#171A20; --surface-2:#1E222A;
+    --line:#262A32; --line-strong:#333844;
+    --accent:#D9A54B; --accent-ink:#F0C378; --accent-soft:#3A2C15;
+    --decided:#4CBE95; --decided-soft:#173327;
+    --deferred:#E08585; --deferred-soft:#341C1C;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,sans-serif;
+    padding-inline:20px; padding-block:0 48px;
+  }
+  img{ max-width:100%; }
+  [hidden]{ display:none !important; }
+  .mono{ font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric:tabular-nums; }
+  a{ color:var(--accent-ink); }
+
+  header.masthead{
+    max-width:1040px; margin:0 auto; padding-block:32px 20px;
+    display:flex; flex-wrap:wrap; gap:20px 32px; align-items:flex-end; justify-content:space-between;
+    border-bottom:1px solid var(--line);
+  }
+  .masthead-title{ display:flex; flex-direction:column; gap:6px; min-width:220px; }
+  .kicker{ font-family:"IBM Plex Mono"; font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink); font-weight:600; }
+  h1{ font-size:30px; line-height:1.1; margin:0; font-weight:700; letter-spacing:-.01em; text-wrap:balance; }
+  .masthead-sub{ color:var(--ink-soft); font-size:13.5px; max-width:56ch; margin:0; }
+  .local-badge{
+    display:inline-flex; align-items:center; gap:6px; font-family:"IBM Plex Mono"; font-size:11px;
+    padding:4px 10px; border-radius:999px; background:var(--deferred-soft); color:var(--deferred);
+    width:fit-content; font-weight:600; letter-spacing:.03em;
+  }
+  .local-badge::before{ content:"●"; }
+
+  .stats{ display:flex; gap:10px; flex-wrap:wrap; }
+  .stat{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:9px 14px; min-width:84px; text-align:left; box-shadow:var(--shadow); }
+  .stat .n{ font-family:"IBM Plex Mono"; font-size:20px; font-weight:600; line-height:1; }
+  .stat .l{ font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-soft); margin-top:4px; }
+  .stat.accent .n{ color:var(--accent-ink); }
+  .stat.decided .n{ color:var(--decided); }
+  .stat.deferred .n{ color:var(--deferred); }
+
+  .toolbar{
+    max-width:1040px; margin:18px auto 0; display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    position:sticky; top:0; z-index:5; background:var(--paper); padding-block:10px; border-bottom:1px solid transparent;
+  }
+  .toolbar.stuck{ border-bottom-color:var(--line); box-shadow:0 6px 14px -10px rgba(0,0,0,.25); }
+  input[type="search"]{
+    font:inherit; font-size:13.5px; padding:8px 12px; border-radius:8px; border:1px solid var(--line-strong);
+    background:var(--surface); color:var(--ink); min-width:200px; flex:1 1 200px;
+  }
+  input[type="search"]:focus, select:focus, textarea:focus, input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+  .chip-row{ display:flex; gap:6px; flex-wrap:wrap; }
+  button.chip{
+    font:inherit; font-size:12.5px; padding:6px 12px; border-radius:999px; border:1px solid var(--line-strong);
+    background:var(--surface); color:var(--ink-soft); cursor:pointer; white-space:nowrap;
+  }
+  button.chip:hover{ border-color:var(--accent); color:var(--ink); }
+  button.chip[aria-pressed="true"]{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+  .toggle-blocking[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:#1a1204; }
+  .export-btn{ margin-left:auto; }
+
+  main{ max-width:1040px; margin:0 auto; }
+  section.theme{ margin-top:30px; }
+  .theme-head{ display:flex; align-items:baseline; gap:10px; padding-bottom:8px; margin-bottom:10px; border-bottom:1px solid var(--line); }
+  .theme-head h2{ font-size:15.5px; margin:0; font-weight:600; }
+  .theme-head .count{ font-family:"IBM Plex Mono"; font-size:12px; color:var(--ink-soft); }
+
+  details.row{ background:var(--surface); border:1px solid var(--line); border-radius:10px; margin-bottom:8px; box-shadow:var(--shadow); overflow:hidden; }
+  details.row[open]{ border-color:var(--line-strong); }
+  summary.row-head{ list-style:none; cursor:pointer; padding:12px 14px; display:flex; align-items:center; gap:12px; }
+  summary.row-head::-webkit-details-marker{ display:none; }
+  .chev{ width:14px; height:14px; flex:none; color:var(--ink-soft); transition:transform .15s ease; }
+  details[open] .chev{ transform:rotate(90deg); }
+  .row-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+  .ids{ display:flex; gap:6px; flex-wrap:wrap; }
+  .idchip{ font-family:"IBM Plex Mono"; font-size:10.5px; padding:1px 7px; border-radius:5px; background:var(--surface-2); color:var(--ink-soft); border:1px solid var(--line); }
+  .row-title{ font-size:14px; font-weight:500; line-height:1.35; display:flex; align-items:center; gap:7px; }
+  .blk-flag{ color:var(--accent-ink); font-size:12px; flex:none; }
+  .blk-flag::before{ content:"● "; }
+
+  .statuspill{
+    font-family:"IBM Plex Mono"; font-size:11px; font-weight:600; letter-spacing:.03em; text-transform:uppercase;
+    padding:4px 10px; border-radius:999px; flex:none; white-space:nowrap; background:var(--accent-soft); color:var(--accent-ink); border:1px solid transparent;
+  }
+  .statuspill.decided{ background:var(--decided-soft); color:var(--decided); }
+  .statuspill.deferred{ background:var(--deferred-soft); color:var(--deferred); }
+
+  .row-body{ padding:0 14px 16px 40px; display:flex; flex-direction:column; gap:12px; }
+  .detail{ font-size:13px; color:var(--ink-soft); line-height:1.55; margin:0; max-width:70ch; }
+
+  .field-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px; }
+  @media (max-width:560px){ .field-grid{ grid-template-columns:1fr; } }
+  .field{ display:flex; flex-direction:column; gap:5px; }
+  .field.full{ grid-column:1/-1; }
+  .field label{ font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); font-weight:600; }
+  select, textarea, input[type="text"], input[type="date"]{
+    font:inherit; font-size:13px; padding:8px 10px; border-radius:7px; border:1px solid var(--line-strong); background:var(--paper); color:var(--ink); width:100%;
+  }
+  textarea{ min-height:64px; resize:vertical; font-family:"IBM Plex Sans"; }
+  .row-foot{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .savebtn{ font:inherit; font-size:12.5px; font-weight:600; padding:7px 14px; border-radius:7px; border:1px solid var(--ink); background:var(--ink); color:var(--paper); cursor:pointer; }
+  .savebtn:hover{ opacity:.85; }
+  .savestate{ font-size:11.5px; color:var(--ink-soft); font-family:"IBM Plex Mono"; min-height:1.2em; }
+  .savestate.ok{ color:var(--decided); }
+
+  .empty{ padding:40px 10px; text-align:center; color:var(--ink-soft); font-size:13.5px; }
+
+  footer.note{ max-width:1040px; margin:36px auto 0; padding-top:16px; border-top:1px solid var(--line); font-size:12px; color:var(--ink-soft); line-height:1.7; }
+  footer.note code{ font-family:"IBM Plex Mono"; background:var(--surface-2); padding:1px 5px; border-radius:4px; font-size:11.5px; }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-title">
+    <span class="kicker">Subscription &amp; Revenue Platform</span>
+    <h1>Decision Ledger</h1>
+    <p class="masthead-sub">Every open decision blocking the pre-implementation and pre-engineering documentation suites, in one place.</p>
+    <span class="local-badge">Local copy — snapshot 2026-09-23 (post gate-resolution), edits stay on this machine</span>
+  </div>
+  <div class="stats" id="stats"></div>
+</header>
+
+<div class="toolbar" id="toolbar">
+  <input type="search" id="search" placeholder="Search decisions…" aria-label="Search decisions">
+  <div class="chip-row" id="statusChips"></div>
+  <button class="chip toggle-blocking" id="blockingToggle" aria-pressed="false">Blocking only</button>
+  <button class="chip export-btn" id="exportBtn">Export edits (.json)</button>
+</div>
+
+<main id="main">
+  <div class="empty">Loading…</div>
+</main>
+
+<footer class="note">
+  This is a <strong>local, single-browser snapshot</strong> of the decision ledger, generated 2026-09-23. Edits you make here are saved to this browser's <code>localStorage</code> only — they do not sync to Claude and are not visible on another device. For a copy that Claude can read back and that syncs across devices, use the live artifact instead: <a href="https://claude.ai/artifact/APc4sxoK74vL8Tg59Z2HNF" target="_blank" rel="noopener">claude.ai/artifact/APc4sxoK74vL8Tg59Z2HNF</a>.
+  <br><br>
+  Sources cite the originating requirement ID and document. <span class="idchip">DEC-###</span> — <code>docs/pre-engineering/</code> suite (SUB-0000–SUB-0021). <span class="idchip">OD-###</span> — <code>docs/pre-implementation/</code> suite (00–25). Resolving one row here resolves every linked ID across both suites.
+  <br><br>
+  Use <strong>Export edits (.json)</strong> to save your changes as a file — hand that file to Claude (or paste its contents) to have the source markdown documents updated to match.
+  <br><br>
+  <strong>Implementation sync note (2026-09-23):</strong> the backend-runtime seed decision was updated from the Product Owner's explicit instruction to proceed with TypeScript on Node.js. This local update must still be copied to the live artifact when it is accessible.
+</footer>
+
+<script id="seed-data" type="application/json">[{"blockedOn":"","blocking":true,"decidedAt":"2026-09-23","decidedBy":"Sathyanarayan Kiran","decision":"Start the implementation with USA","detail":"Which countries launch first, which currencies are supported, applicable invoice regulations, and the initial tax evidence/determination provider. Blocks the invoice and tax-evidence schema freeze.","order":1,"sources":[{"doc":"01-product-requirements-document.md","id":"OD-001","section":"§12","suite":"pre-implementation"},{"doc":"SUB-0001_Product_Requirements_Document.md","id":"DEC-001","section":"§19","suite":"pre-engineering"},{"doc":"SUB-0017_Integration_Architecture.md","id":"DEC-038","section":"§12","suite":"pre-engineering"}],"status":"decided","theme":"Launch & Commercial Scope","title":"Launch countries, currencies, invoice regulations & tax provider","id":"launch-countries-tax"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Which specific payment rails (beyond card via Stripe) must be live for the MVP launch markets.","order":2,"sources":[{"doc":"SUB-0001_Product_Requirements_Document.md","id":"DEC-008","section":"§19","suite":"pre-engineering"}],"status":"open","theme":"Launch & Commercial Scope","title":"Countries & payment rails supported at MVP launch","id":"mvp-launch-rails"},{"blockedOn":"","blocking":true,"decidedAt":"2026-09-23","decidedBy":"Sathyanarayan Kiran","decision":"Propose options ahead of implementation","detail":"Determines the payment connector implementation shape; blocks the Payments module build.","order":3,"sources":[{"doc":"01-product-requirements-document.md","id":"OD-005","section":"§12","suite":"pre-implementation"},{"doc":"SUB-0001_Product_Requirements_Document.md","id":"DEC-003","section":"§19","suite":"pre-engineering"},{"doc":"SUB-0009_Payments_Collections_Specification.md","id":"DEC-018","section":"§8","suite":"pre-engineering"}],"status":"decided","theme":"Launch & Commercial Scope","title":"Stripe account model, regions/methods, Connect vs. non-Connect scope","id":"stripe-scope"},{"blockedOn":"","blocking":true,"decidedAt":"2026-09-23","decidedBy":"Sathya","decision":"Propose options during implementation","detail":"HALF_UP rounding by currency/model and ACTUAL_DAYS proration convention including DST/calendar treatment. Blocks certifying the pricing engine as correct.","order":4,"sources":[{"doc":"01-product-requirements-document.md","id":"OD-002","section":"§12","suite":"pre-implementation"},{"doc":"01-product-requirements-document.md","id":"OD-003","section":"§12","suite":"pre-implementation"},{"doc":"SUB-0001_Product_Requirements_Document.md","id":"DEC-002","section":"§19","suite":"pre-engineering"},{"doc":"SUB-0007_Pricing_Rating_Engine_Specification.md","id":"DEC-013","section":"§13","suite":"pre-engineering"}],"status":"decided","theme":"Finance & Pricing Arithmetic","title":"Numeric rounding policy & proration convention (finance sign-off)","id":"rounding-proration"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Sets the maker-checker dollar threshold above which a refund requires Finance Controller approval.","order":5,"sources":[{"doc":"SUB-0005_State_Machine_Specification.md","id":"DEC-012","section":"§8","suite":"pre-engineering"}],"status":"open","theme":"Finance & Pricing Arithmetic","title":"Refund approval threshold amounts by currency","id":"refund-thresholds"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Below what amount can a dispute skip the full Investigated stage and auto-resolve.","order":6,"sources":[{"doc":"SUB-0005_State_Machine_Specification.md","id":"DEC-011","section":"§9.4","suite":"pre-engineering"}],"status":"open","theme":"Finance & Pricing Arithmetic","title":"De-minimis auto-resolution threshold for disputes","id":"dispute-threshold"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Default ledger account mapping for journal entries and how much a tenant may override it.","order":7,"sources":[{"doc":"SUB-0010_Accounting_Revenue_Specification.md","id":"DEC-022","section":"§12","suite":"pre-engineering"}],"status":"open","theme":"Finance & Pricing Arithmetic","title":"Chart-of-accounts default mapping & per-tenant customization scope","id":"chart-of-accounts"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"ASC 606 / IFRS 15 / other, and the standalone-selling-price allocation method for hybrid subscriptions.","order":8,"sources":[{"doc":"SUB-0010_Accounting_Revenue_Specification.md","id":"DEC-021","section":"§7-8","suite":"pre-engineering"}],"status":"open","theme":"Finance & Pricing Arithmetic","title":"Applicable revenue recognition standard(s) & multi-element allocation method","id":"revenue-recognition-standard"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Whether a new tenant defaults to one invoice per account or splits by product family/contract.","order":9,"sources":[{"doc":"SUB-0008_Billing_Invoicing_Specification.md","id":"DEC-016","section":"§7","suite":"pre-engineering"}],"status":"open","theme":"Finance & Pricing Arithmetic","title":"Default invoice-grouping policy for new tenants","id":"invoice-grouping-default"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"How long an unmatched settlement/payment may sit before it must be escalated, and to whom.","order":10,"sources":[{"doc":"SUB-0010_Accounting_Revenue_Specification.md","id":"DEC-023","section":"§9","suite":"pre-engineering"}],"status":"open","theme":"Finance & Pricing Arithmetic","title":"Reconciliation exception SLO & escalation ownership","id":"reconciliation-sla"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"What counts as an auditable verification source before these pricing models can bill a live tenant.","order":11,"sources":[{"doc":"SUB-0007_Pricing_Rating_Engine_Specification.md","id":"DEC-015","section":"§3.8","suite":"pre-engineering"}],"status":"open","theme":"Finance & Pricing Arithmetic","title":"Verification-source requirements for outcome-based/revenue-share pricing","id":"outcome-pricing-verification"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Which of the non-MVP pricing models (matrix, indexed, ramp, etc.) get built first.","order":12,"sources":[{"doc":"SUB-0007_Pricing_Rating_Engine_Specification.md","id":"DEC-014","section":"§3","suite":"pre-engineering"}],"status":"open","theme":"Finance & Pricing Arithmetic","title":"Release 2 pricing-model implementation priority order","id":"pricing-model-priority"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Whether a failed finalization must leave a void/gap record for the skipped invoice number, per local regulation.","order":13,"sources":[{"doc":"SUB-0008_Billing_Invoicing_Specification.md","id":"DEC-017","section":"§6","suite":"pre-engineering"}],"status":"open","theme":"Finance & Pricing Arithmetic","title":"Gap-evidence requirement for finalization rollback by jurisdiction","id":"finalization-gap-evidence"},{"blockedOn":"","blocking":true,"decidedAt":"2026-09-23","decidedBy":"sat","decision":"Propose options during implementation","detail":"Which of the six agents may operate above L1 (recommendation-only), and under what tenant opt-in process. Blocks any AI action beyond read-only/advisory.","order":14,"sources":[{"doc":"SUB-0001_Product_Requirements_Document.md","id":"DEC-005","section":"§19","suite":"pre-engineering"},{"doc":"SUB-0016_AI_Agent_Governance_Specification.md","id":"DEC-034","section":"§2","suite":"pre-engineering"}],"status":"decided","theme":"AI Governance & Autonomy","title":"Per-agent AI autonomy thresholds before enabling L2/L3","id":"ai-autonomy-thresholds"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"How long an agent must outperform the deterministic fallback, and by what margin, before L3 is considered.","order":15,"sources":[{"doc":"SUB-0016_AI_Agent_Governance_Specification.md","id":"DEC-035","section":"§6","suite":"pre-engineering"}],"status":"open","theme":"AI Governance & Autonomy","title":"Evaluation period & pass/fail criteria for L2→L3 autonomy promotion","id":"ai-evaluation-criteria"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Should a subscriber-facing 'Explain my bill' response visibly state it was AI-generated (even though grounded).","order":16,"sources":[{"doc":"SUB-0016_AI_Agent_Governance_Specification.md","id":"DEC-036","section":"§3.6","suite":"pre-engineering"}],"status":"open","theme":"AI Governance & Autonomy","title":"Whether AI responses require a visible disclosure label","id":"ai-disclosure-label"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Independent review of the deterministic risk scorecard's inputs for unintended discriminatory proxies before any live tenant use.","order":17,"sources":[{"doc":"01-product-requirements-document.md","id":"OD-006","section":"§12","suite":"pre-implementation"},{"doc":"SUB-0009_Payments_Collections_Specification.md","id":"DEC-020","section":"§5","suite":"pre-engineering"}],"status":"open","theme":"Payments & Collections Intelligence","title":"Collections risk-signal fairness / disparate-impact review","id":"collections-fairness-review"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Whether the Payment Success Engine's predictive routing is on or off by default for a new tenant, and how often it's re-evaluated against the deterministic baseline.","order":18,"sources":[{"doc":"SUB-0009_Payments_Collections_Specification.md","id":"DEC-019","section":"§3.5","suite":"pre-engineering"}],"status":"open","theme":"Payments & Collections Intelligence","title":"Predictive routing/retry model opt-in default & evaluation cadence","id":"predictive-routing-optin"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Concrete events/minute target and retention window, needed before usage-table partitioning is frozen.","order":19,"sources":[{"doc":"01-product-requirements-document.md","id":"OD-004","section":"§12","suite":"pre-implementation"},{"doc":"SUB-0001_Product_Requirements_Document.md","id":"DEC-004","section":"§19","suite":"pre-engineering"},{"doc":"SUB-0018_Non_Functional_Requirements.md","id":"DEC-040","section":"§12","suite":"pre-engineering"}],"status":"open","theme":"Scale, Throughput & Capacity","title":"MVP usage throughput, burst profile & retention SLO","id":"usage-throughput"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Bounds for the POST /usage-events:batch endpoint once real throughput is benchmarked.","order":20,"sources":[{"doc":"13-api-specification.md","id":"OD-014","section":"§20","suite":"pre-implementation"},{"doc":"SUB-0013_API_Event_Contracts.md","id":"DEC-029","section":"§9","suite":"pre-engineering"}],"status":"open","theme":"Scale, Throughput & Capacity","title":"Default & maximum usage-events batch size under real ingestion load","id":"batch-size"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"A concrete large-tenant shape (subscription count, usage cardinality) to tune fairness controls against.","order":21,"sources":[{"doc":"SUB-0018_Non_Functional_Requirements.md","id":"DEC-041","section":"§12","suite":"pre-engineering"}],"status":"open","theme":"Scale, Throughput & Capacity","title":"Reference large-enterprise-tenant profile for noisy-neighbor tuning","id":"enterprise-tenant-profile"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Concrete pass/fail numbers for the load-test suite, once the throughput benchmark exists.","order":22,"sources":[{"doc":"SUB-0019_Test_Strategy_Financial_Correctness_Framework.md","id":"DEC-042","section":"§7","suite":"pre-engineering"}],"status":"open","theme":"Scale, Throughput & Capacity","title":"Load-test threshold values gating release","id":"load-test-thresholds"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Per-service SLA targets beyond the MVP 99.9% financial-write baseline.","order":23,"sources":[{"doc":"25-deployment-architecture.md","id":"OD-022","section":"§11","suite":"pre-implementation"},{"doc":"SUB-0001_Product_Requirements_Document.md","id":"DEC-006","section":"§19","suite":"pre-engineering"},{"doc":"SUB-0018_Non_Functional_Requirements.md","id":"DEC-039","section":"§1","suite":"pre-engineering"}],"status":"open","theme":"Architecture & Infrastructure","title":"Target availability by capability tier, incl. whether 99.99% is ever committed","id":"availability-targets"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"What contractual/regulatory/scale condition triggers moving a tenant to a dedicated cluster.","order":24,"sources":[{"doc":"SUB-0001_Product_Requirements_Document.md","id":"DEC-007","section":"§19","suite":"pre-engineering"}],"status":"open","theme":"Architecture & Infrastructure","title":"Tenant deployment strategy trigger (shared vs. dedicated)","id":"tenant-deployment-strategy"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Formal sign-off on ADR-008 before Gate 4 backlog conversion proceeds into implementation.","order":25,"sources":[{"doc":"SUB-0011_System_Architecture.md","id":"DEC-024","section":"§9","suite":"pre-engineering"}],"status":"open","theme":"Architecture & Infrastructure","title":"Confirm modular-monolith starting topology as approved baseline","id":"modular-monolith-confirm"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Sign-off on ADR-014/ADR-015 deferring OpenSearch/warehouse adoption pending measured Release 2 need.","order":26,"sources":[{"doc":"SUB-0011_System_Architecture.md","id":"DEC-025","section":"§9","suite":"pre-engineering"}],"status":"open","theme":"Architecture & Infrastructure","title":"Approve deferral of dedicated search/analytics platform","id":"search-analytics-deferral"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Benchmark-driven pick between the two candidate ID schemes.","order":27,"sources":[{"doc":"SUB-0012_Data_Architecture_ERD.md","id":"DEC-027","section":"§11","suite":"pre-engineering"}],"status":"open","theme":"Architecture & Infrastructure","title":"Primary-key scheme final selection (ULID vs. UUIDv7)","id":"primary-key-scheme"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Minimum legally required retention period for financial and audit records once launch countries are known.","order":28,"sources":[{"doc":"SUB-0012_Data_Architecture_ERD.md","id":"DEC-026","section":"§7","suite":"pre-engineering"}],"status":"open","theme":"Architecture & Infrastructure","title":"Financial/audit retention floor by launch jurisdiction","id":"retention-floor"},{"blockedOn":"","blocking":true,"decidedAt":"2026-09-23","decidedBy":"Sathyanarayan Kiran","decision":"Propose options during implementation","detail":"Decided after a decimal-precision, batch-throughput, and team-capability spike. Blocks repo setup, CI/CD, and hiring profile.","order":29,"sources":[{"doc":"SUB-0020_Engineering_Implementation_Blueprint.md","id":"DEC-044","section":"§1","suite":"pre-engineering"}],"status":"decided","theme":"Architecture & Infrastructure","title":"Final backend runtime selection (TypeScript/Node, Kotlin/Java, or Go)","id":"backend-runtime"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"The specific operational-scale trigger that justifies moving off a managed container platform.","order":30,"sources":[{"doc":"25-deployment-architecture.md","id":"OD-023","section":"§11","suite":"pre-implementation"},{"doc":"SUB-0020_Engineering_Implementation_Blueprint.md","id":"DEC-045","section":"§13","suite":"pre-engineering"}],"status":"open","theme":"Architecture & Infrastructure","title":"Managed container platform vs. self-operated Kubernetes threshold","id":"container-platform"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Which regions to stand up once the first tenant with a hard data-residency requirement appears.","order":31,"sources":[{"doc":"25-deployment-architecture.md","id":"OD-021","section":"§11","suite":"pre-implementation"}],"status":"open","theme":"Architecture & Infrastructure","title":"Enterprise regional deployment topology & target countries","id":"regional-deployment"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Who approves a billing-worker/payment-worker deploy, and what evidence they require, before it reaches full traffic.","order":32,"sources":[{"doc":"25-deployment-architecture.md","id":"OD-024","section":"§11","suite":"pre-implementation"}],"status":"open","theme":"Architecture & Infrastructure","title":"Financially-material-worker manual-approval-gate rollout process","id":"worker-approval-gate"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Who owns scheduling and reviewing chaos-testing runs against the financial write path.","order":33,"sources":[{"doc":"SUB-0019_Test_Strategy_Financial_Correctness_Framework.md","id":"DEC-043","section":"§7","suite":"pre-engineering"}],"status":"open","theme":"Architecture & Infrastructure","title":"Chaos-testing environment & cadence ownership","id":"chaos-testing-ownership"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"How often break-glass access grants are reviewed, and what triggers an automated anomaly alert.","order":34,"sources":[{"doc":"15-security-architecture.md","id":"OD-016","section":"§14","suite":"pre-implementation"},{"doc":"SUB-0014_Security_Privacy_Compliance_Architecture.md","id":"DEC-031","section":"§10","suite":"pre-engineering"}],"status":"open","theme":"Security & Compliance","title":"Break-glass audit review cadence & anomaly-alerting threshold","id":"breakglass-cadence"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"When to pursue SOC 2 Type I/II and what ISO 27001 scope, tied to enterprise sales motion.","order":35,"sources":[{"doc":"15-security-architecture.md","id":"OD-018","section":"§14","suite":"pre-implementation"},{"doc":"SUB-0014_Security_Privacy_Compliance_Architecture.md","id":"DEC-032","section":"§13","suite":"pre-engineering"}],"status":"open","theme":"Security & Compliance","title":"Target certification roadmap (SOC 2 / ISO 27001 timing)","id":"certification-roadmap"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Internal vs. third-party, and how often, beyond the mandatory pre-launch minimum.","order":36,"sources":[{"doc":"15-security-architecture.md","id":"OD-019","section":"§14","suite":"pre-implementation"},{"doc":"SUB-0014_Security_Privacy_Compliance_Architecture.md","id":"DEC-033","section":"§14","suite":"pre-engineering"}],"status":"open","theme":"Security & Compliance","title":"Penetration testing cadence & scope before first production launch","id":"pentest-cadence"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Formal IR runbook plus what triggers a legal breach-notification obligation, per launch jurisdiction.","order":37,"sources":[{"doc":"15-security-architecture.md","id":"OD-017","section":"§14","suite":"pre-implementation"}],"status":"open","theme":"Security & Compliance","title":"Incident-response runbook & legal notification thresholds by jurisdiction","id":"incident-response-runbook"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"When post-MVP to stand up a formal disclosure program.","order":38,"sources":[{"doc":"15-security-architecture.md","id":"OD-020","section":"§14","suite":"pre-implementation"}],"status":"open","theme":"Security & Compliance","title":"Bug-bounty / responsible-disclosure program launch timing","id":"bug-bounty-timing"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"E.g. 6 vs. 12 months' notice before a v1 breaking change ships.","order":39,"sources":[{"doc":"13-api-specification.md","id":"OD-013","section":"§20","suite":"pre-implementation"},{"doc":"SUB-0013_API_Event_Contracts.md","id":"DEC-028","section":"§2","suite":"pre-engineering"}],"status":"open","theme":"API & Developer Experience","title":"API deprecation window length before first breaking change","id":"api-deprecation-window"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"For read-heavy admin UI composition, as a post-MVP roadmap item.","order":40,"sources":[{"doc":"13-api-specification.md","id":"OD-015","section":"§20","suite":"pre-implementation"},{"doc":"SUB-0013_API_Event_Contracts.md","id":"DEC-030","section":"§12","suite":"pre-engineering"}],"status":"open","theme":"API & Developer Experience","title":"Whether to offer GraphQL alongside REST","id":"graphql-offering"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Which ERP (SAP, Oracle, NetSuite, Dynamics) gets a connector built first.","order":41,"sources":[{"doc":"SUB-0017_Integration_Architecture.md","id":"DEC-037","section":"§9","suite":"pre-engineering"}],"status":"open","theme":"Integrations","title":"ERP connector implementation priority order for Release 2","id":"erp-connector-priority"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Sign off on the SUB-0003 MVP/R2/Enterprise classification table as locked.","order":42,"sources":[{"doc":"SUB-0003_MVP_Scope_Release_Strategy.md","id":"DEC-009","section":"§2","suite":"pre-engineering"}],"status":"open","theme":"Procedural Gate Sign-offs","title":"Confirm MVP capability classification as final before backlog conversion","id":"mvp-capability-confirm"},{"blockedOn":"","blocking":false,"decidedAt":"","decidedBy":"","decision":"","detail":"Sign off on SUB-0003 §6 as the trigger for kicking off Release 2 planning.","order":43,"sources":[{"doc":"SUB-0003_MVP_Scope_Release_Strategy.md","id":"DEC-010","section":"§6","suite":"pre-engineering"}],"status":"open","theme":"Procedural Gate Sign-offs","title":"Approve MVP exit criteria as the Release 2 planning gate","id":"mvp-exit-criteria"}]</script>
+
+<script>
+(function(){
+  "use strict";
+
+  var STATUS = ["open","decided","deferred"];
+  var STATUS_LABEL = { open:"Open", decided:"Decided", deferred:"Deferred" };
+  var STORAGE_KEY = "decision-ledger-local-edits-v1";
+
+  var SEED = JSON.parse(document.getElementById("seed-data").textContent);
+  var CONFIRMED_RUNTIME = "TypeScript on Node.js 24 LTS for the MVP backend and workers, with mandatory fixed-point/decimal money types, idempotent replay tests for financial commands, and the SPIKE-02 golden dataset as a release gate.";
+  var state = { docs: {}, order: [], filter: "all", blockingOnly: false, query: "" };
+
+  function esc(s){
+    return String(s==null?"":s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  function loadOverrides(){
+    try {
+      var raw = window.localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch(e){ return {}; }
+  }
+  function saveOverride(id, fields){
+    var all = loadOverrides();
+    all[id] = Object.assign({}, all[id]||{}, fields);
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(all)); } catch(e){}
+  }
+
+  function init(){
+    var overrides = loadOverrides();
+    SEED.forEach(function(d){
+      var merged = Object.assign({}, d, overrides[d.id]||{});
+      if (d.id === "backend-runtime") {
+        merged.status = "decided";
+        merged.decision = CONFIRMED_RUNTIME;
+        merged.decidedAt = "2026-09-23";
+        merged.decidedBy = "Sathyanarayan Kiran";
+      }
+      state.docs[d.id] = merged;
+      state.order.push(d.id);
+    });
+    state.order.sort(function(a,b){ return (state.docs[a].order||0) - (state.docs[b].order||0); });
+  }
+
+  function sourcesLine(sources){
+    return (sources||[]).map(function(s){
+      return '<span class="idchip" title="'+esc(s.doc||"")+' '+esc(s.section||"")+'">'+esc(s.id)+' · '+esc(s.suite==="pre-engineering"?"eng":"impl")+'</span>';
+    }).join(" ");
+  }
+
+  function computeStats(){
+    var list = state.order.map(function(id){ return state.docs[id]; }).filter(Boolean);
+    var total = list.length;
+    var open = list.filter(function(d){ return (d.status||"open")==="open"; }).length;
+    var decided = list.filter(function(d){ return d.status==="decided"; }).length;
+    var deferred = list.filter(function(d){ return d.status==="deferred"; }).length;
+    var blockingOpen = list.filter(function(d){ return d.blocking && (d.status||"open")==="open"; }).length;
+    return {total:total, open:open, decided:decided, deferred:deferred, blockingOpen:blockingOpen};
+  }
+
+  function statTile(n, label, cls){
+    return '<div class="stat'+(cls?(" "+cls):"")+'"><div class="n mono">'+n+'</div><div class="l">'+esc(label)+'</div></div>';
+  }
+  function renderStats(){
+    var s = computeStats();
+    document.getElementById("stats").innerHTML =
+      statTile(s.total, "Total") +
+      statTile(s.open, "Open", "") +
+      statTile(s.decided, "Decided", "decided") +
+      statTile(s.deferred, "Deferred", "deferred") +
+      statTile(s.blockingOpen, "Blocking, open", "accent");
+  }
+
+  function renderStatusChips(){
+    var wrap = document.getElementById("statusChips");
+    var items = [["all","All"]].concat(STATUS.map(function(s){ return [s, STATUS_LABEL[s]]; }));
+    wrap.innerHTML = items.map(function(pair){
+      return '<button class="chip" data-status="'+pair[0]+'" aria-pressed="'+(state.filter===pair[0])+'">'+esc(pair[1])+'</button>';
+    }).join("");
+    Array.prototype.forEach.call(wrap.querySelectorAll("button"), function(btn){
+      btn.addEventListener("click", function(){
+        state.filter = btn.getAttribute("data-status");
+        renderStatusChips();
+        renderList();
+      });
+    });
+  }
+
+  function matchesFilter(d){
+    if (state.blockingOnly && !d.blocking) return false;
+    if (state.filter !== "all" && (d.status||"open") !== state.filter) return false;
+    if (state.query){
+      var q = state.query.toLowerCase();
+      var hay = (d.title+" "+(d.detail||"")+" "+(d.theme||"")+" "+(d.sources||[]).map(function(s){return s.id;}).join(" ")).toLowerCase();
+      if (hay.indexOf(q) === -1) return false;
+    }
+    return true;
+  }
+
+  function rowHtml(d){
+    var status = d.status || "open";
+    return (
+      '<details class="row" data-id="'+esc(d.id)+'">'+
+        '<summary class="row-head">'+
+          '<svg class="chev" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'+
+          '<div class="row-main">'+
+            '<div class="ids">'+sourcesLine(d.sources)+'</div>'+
+            '<div class="row-title">'+(d.blocking?'<span class="blk-flag" title="Flagged as blocking"></span>':'')+esc(d.title)+'</div>'+
+          '</div>'+
+          '<span class="statuspill '+status+'" data-role="pill">'+esc(STATUS_LABEL[status])+'</span>'+
+        '</summary>'+
+        '<div class="row-body">'+
+          (d.detail ? '<p class="detail">'+esc(d.detail)+'</p>' : '')+
+          '<div class="field-grid">'+
+            '<div class="field"><label for="status-'+esc(d.id)+'">Status</label>'+
+              '<select id="status-'+esc(d.id)+'" data-field="status">'+
+                STATUS.map(function(s){ return '<option value="'+s+'"'+(s===status?" selected":"")+'>'+STATUS_LABEL[s]+'</option>'; }).join("")+
+              '</select></div>'+
+            '<div class="field"><label for="by-'+esc(d.id)+'">Decided by</label>'+
+              '<input type="text" id="by-'+esc(d.id)+'" data-field="decidedBy" value="'+esc(d.decidedBy||"")+'" placeholder="Name / role"></div>'+
+            '<div class="field"><label for="date-'+esc(d.id)+'">Decided on</label>'+
+              '<input type="date" id="date-'+esc(d.id)+'" data-field="decidedAt" value="'+esc(d.decidedAt||"")+'"></div>'+
+            '<div class="field"><label for="notes-'+esc(d.id)+'">Blocked on</label>'+
+              '<input type="text" id="notes-'+esc(d.id)+'" data-field="blockedOn" value="'+esc(d.blockedOn||"")+'" placeholder="Optional"></div>'+
+            '<div class="field full"><label for="dec-'+esc(d.id)+'">Decision / resolution</label>'+
+              '<textarea id="dec-'+esc(d.id)+'" data-field="decision" placeholder="What was decided, and why.">'+esc(d.decision||"")+'</textarea></div>'+
+          '</div>'+
+          '<div class="row-foot">'+
+            '<span class="savestate" data-role="savestate"></span>'+
+            '<button class="savebtn" type="button" data-role="save">Save</button>'+
+          '</div>'+
+        '</div>'+
+      '</details>'
+    );
+  }
+
+  function renderList(){
+    var main = document.getElementById("main");
+    var byTheme = {}, themeOrder = [];
+    state.order.forEach(function(id){
+      var d = state.docs[id];
+      if (!d || !matchesFilter(d)) return;
+      if (!byTheme[d.theme]){ byTheme[d.theme] = []; themeOrder.push(d.theme); }
+      byTheme[d.theme].push(d);
+    });
+    if (themeOrder.length === 0){
+      main.innerHTML = '<div class="empty">No decisions match this filter.</div>';
+      return;
+    }
+    var html = "";
+    themeOrder.forEach(function(theme){
+      var items = byTheme[theme];
+      html += '<section class="theme"><div class="theme-head"><h2>'+esc(theme)+'</h2><span class="count mono">'+items.length+'</span></div>';
+      items.forEach(function(d){ html += rowHtml(d); });
+      html += '</section>';
+    });
+    main.innerHTML = html;
+    state.order.forEach(function(id){
+      var d = state.docs[id];
+      if (d && matchesFilter(d)) wireRow(id);
+    });
+  }
+
+  function wireRow(id){
+    var el = document.querySelector('details.row[data-id="'+cssEscape(id)+'"]');
+    if (!el) return;
+    Array.prototype.forEach.call(el.querySelectorAll("[data-field]"), function(f){
+      f.addEventListener("input", function(){
+        if (f.getAttribute("data-field") === "status"){
+          var pill = el.querySelector('[data-role="pill"]');
+          pill.className = "statuspill " + f.value;
+          pill.textContent = STATUS_LABEL[f.value];
+        }
+      });
+    });
+    el.querySelector('[data-role="save"]').addEventListener("click", function(){ saveRow(id, el); });
+  }
+
+  function saveRow(id, el){
+    var payload = {};
+    Array.prototype.forEach.call(el.querySelectorAll("[data-field]"), function(f){
+      payload[f.getAttribute("data-field")] = f.value;
+    });
+    payload.updatedAt = new Date().toISOString();
+    Object.assign(state.docs[id], payload);
+    saveOverride(id, payload);
+    var stateEl = el.querySelector('[data-role="savestate"]');
+    stateEl.textContent = "Saved locally " + new Date().toLocaleTimeString();
+    stateEl.className = "savestate ok";
+    renderStats();
+  }
+
+  function cssEscape(s){
+    return String(s).replace(/[^a-zA-Z0-9_\-]/g, function(c){ return "\\" + c; });
+  }
+
+  function exportEdits(){
+    var data = state.order.map(function(id){ return state.docs[id]; });
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "decision-ledger-edits-" + new Date().toISOString().slice(0,10) + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+
+  document.getElementById("search").addEventListener("input", function(e){
+    state.query = e.target.value.trim();
+    renderList();
+  });
+  document.getElementById("blockingToggle").addEventListener("click", function(e){
+    state.blockingOnly = !state.blockingOnly;
+    e.target.setAttribute("aria-pressed", String(state.blockingOnly));
+    renderList();
+  });
+  document.getElementById("exportBtn").addEventListener("click", exportEdits);
+
+  window.addEventListener("scroll", function(){
+    document.getElementById("toolbar").classList.toggle("stuck", window.scrollY > 140);
+  }, { passive:true });
+
+  init();
+  renderStatusChips();
+  renderStats();
+  renderList();
+})();
+</script>
+</body>
+</html>

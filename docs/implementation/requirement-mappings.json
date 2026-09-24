@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "description": "Curated mappings from atomic master requirements to implementation stories and tests. Generated candidates remain unmapped until evidence is reviewed.",
+  "mappings": [
+    {
+      "requirementId": "MSR-002-15E961BFA7",
+      "validationStatus": "validated",
+      "atomicityStatus": "validated_atomic",
+      "epicIds": ["SUB-E005", "SUB-E017"],
+      "storyIds": ["US-BL-005-05", "US-BL-017-01"],
+      "testIds": ["TC-005-05-01", "TC-005-05-02", "TC-017-01-01"],
+      "notes": "Native commercial-to-financial lineage maps to calculation traces and immutable audit evidence."
+    },
+    {
+      "requirementId": "MSR-058-C69192855F",
+      "validationStatus": "validated",
+      "atomicityStatus": "validated_atomic",
+      "epicIds": ["SUB-E001"],
+      "storyIds": ["US-BL-001-02"],
+      "testIds": ["TC-001-02-01", "TC-001-02-02", "TC-001-02-03"],
+      "notes": "Maps to shared idempotency infrastructure and replay/race/isolation tests."
+    },
+    {
+      "requirementId": "MSR-058-2CCE1DD0DC",
+      "validationStatus": "validated",
+      "atomicityStatus": "validated_atomic",
+      "epicIds": ["SUB-E001"],
+      "storyIds": ["US-BL-001-02"],
+      "testIds": ["TC-001-02-01", "TC-001-02-02"],
+      "notes": "Duplicate-charge prevention is an explicit financial-command acceptance criterion."
+    },
+    {
+      "requirementId": "MSR-060-D67CC8BB58",
+      "validationStatus": "validated",
+      "atomicityStatus": "validated_atomic",
+      "epicIds": ["SUB-E017"],
+      "storyIds": ["US-BL-017-01", "US-BL-017-02"],
+      "testIds": ["TC-017-01-01", "TC-017-01-02", "TC-017-02-01"],
+      "notes": "Configuration mutations use the append-only audit path and reusable timeline."
+    },
+    {
+      "requirementId": "MSR-060-B4104BDA97",
+      "validationStatus": "validated",
+      "atomicityStatus": "validated_atomic",
+      "epicIds": ["SUB-E009", "SUB-E017"],
+      "storyIds": ["US-BL-009-03", "US-BL-017-01"],
+      "testIds": ["TC-009-03-02", "TC-017-01-02"],
+      "notes": "Provider-hosted collection and audit redaction jointly enforce the prohibition."
+    },
+    {
+      "requirementId": "MSR-082-8E4D03300F",
+      "validationStatus": "validated",
+      "atomicityStatus": "validated_atomic",
+      "epicIds": ["SUB-E001"],
+      "storyIds": ["US-BL-001-01", "US-BL-001-04"],
+      "testIds": ["TC-001-01-02", "TC-001-01-03", "TC-001-04-01", "TC-001-04-02"],
+      "notes": "Trusted context and RLS/repository filters provide independent enforcement layers."
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-23T12:21:32.403Z",
+  "sourceSha256": "0a8a831501a99fa5e75c567cd3d0f059c5752b33fface2683cb23bd6292f4a44",
+  "denominator": 1540,
+  "sourceSections": 106,
+  "sectionsWithCandidates": 106,
+  "sectionsWithoutCandidates": [],
+  "reviewed": {
+    "count": 1540,
+    "percent": 100
+  },
+  "reviewMethod": {
+    "curated": 83,
+    "deterministicNormalization": 1457
+  },
+  "accepted": {
+    "count": 1335,
+    "percentOfCandidates": 86.69
+  },
+  "storyMapped": {
+    "count": 1335,
+    "denominator": 1335,
+    "percent": 100
+  },
+  "acceptanceCriteriaMapped": {
+    "count": 1335,
+    "denominator": 1335,
+    "percent": 100
+  },
+  "testMapped": {
+    "count": 1335,
+    "denominator": 1335,
+    "percent": 100
+  },
+  "implementationEvidence": {
+    "count": 0,
+    "denominator": 1335,
+    "percent": 0
+  },
+  "atomicityNeedsReview": 0,
+  "backlogTraceabilityStatus": "complete",
+  "implementationCoverageStatus": "incomplete",
+  "honestCoverageStatus": "incomplete"
+}

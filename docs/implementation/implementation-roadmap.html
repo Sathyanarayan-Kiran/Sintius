@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sintius Implementation Roadmap</title>
+  <style>
+    :root{--ink:#17212b;--muted:#637083;--paper:#f6f4ef;--card:#fff;--line:#d9d7d0;--navy:#15324a;--teal:#087e73;--amber:#b66a00;--red:#b53b3b;--blue:#3666c4;--shadow:0 8px 24px rgba(20,34,48,.08)}
+    *{box-sizing:border-box} body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    header{background:linear-gradient(120deg,#102b42,#15465a 62%,#0b746c);color:#fff;padding:32px clamp(18px,5vw,72px) 26px}
+    header h1{font-size:clamp(28px,4vw,46px);line-height:1.05;margin:0 0 10px;letter-spacing:-.035em} header p{max-width:850px;margin:0;color:#d9e9ed;font-size:15px}
+    .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}.meta span,.badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700}
+    .meta span{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2)}
+    .wrap{max-width:1500px;margin:0 auto;padding:22px clamp(14px,3vw,38px) 60px}.stats{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:10px;margin-top:-42px;margin-bottom:18px}
+    .stat{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);border-radius:12px;padding:15px}.stat strong{font-size:25px;display:block;line-height:1.1}.stat span{color:var(--muted);font-size:12px}
+    .toolbar{position:sticky;top:0;z-index:8;background:rgba(246,244,239,.94);backdrop-filter:blur(10px);display:grid;grid-template-columns:minmax(220px,2fr) repeat(3,minmax(130px,1fr)) auto;gap:8px;padding:10px 0}
+    input,select,textarea,button{font:inherit}input[type=search],select,textarea{width:100%;background:#fff;border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink)}
+    button{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;padding:9px 12px;font-weight:700;cursor:pointer}button:hover{border-color:#8b98a4}button.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+    .toolbar-actions{display:flex;gap:6px}.source-note{background:#fff9e8;border:1px solid #ead49c;border-radius:10px;padding:11px 13px;margin:5px 0 16px;color:#665220}
+    .epic{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:12px 0;overflow:hidden;box-shadow:0 2px 10px rgba(20,34,48,.04)}
+    .epic>summary{list-style:none;cursor:pointer;padding:17px 18px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}.epic>summary::-webkit-details-marker{display:none}.epic>summary:hover{background:#fafafa}
+    .epic-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.epic-title h2{font-size:18px;margin:0}.epic-id{font:700 12px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--blue)}.epic-goal{color:var(--muted);margin:5px 0 0;max-width:930px}
+    .epic-kpis{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.progress{height:8px;background:#e8e6df;border-radius:99px;overflow:hidden;min-width:115px}.progress>i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--teal))}
+    .stories{border-top:1px solid var(--line);padding:12px;background:#f8f7f3}.story{background:#fff;border:1px solid var(--line);border-radius:10px;margin:9px 0;overflow:hidden}.story>summary{list-style:none;cursor:pointer;padding:13px 14px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}.story>summary::-webkit-details-marker{display:none}.story h3{font-size:15px;margin:0 0 4px}.story-sub{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:12px}
+    .status-not_started{background:#edf0f2;color:#53606d}.status-in_progress,.status-partial{background:#e7f0ff;color:#2855a1}.status-implemented,.status-passing{background:#dcf5ed;color:#08705f}.status-blocked,.status-failing{background:#ffe5e2;color:#a62e2e}.status-deferred{background:#f3e9fa;color:#7b4199}.status-not_run{background:#f0efec;color:#65615b}
+    .story-body{border-top:1px solid var(--line);padding:14px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr);gap:18px}.story-body h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:5px 0 8px}.story-body ol{margin:0;padding-left:21px}.story-body li{margin:6px 0}.controls{background:#f7f8fa;border-radius:9px;padding:12px}.control-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.controls label{display:block;font-size:11px;font-weight:800;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}.controls textarea{min-height:65px;resize:vertical;margin-top:8px}
+    .test{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #eceae5}.test:first-of-type{border-top:0}.test-id{font:700 11px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--blue)}.empty{padding:50px;text-align:center;color:var(--muted)}
+    footer{max-width:1500px;margin:0 auto;padding:0 38px 35px;color:var(--muted);font-size:12px}.hidden{display:none!important}
+    @media(max-width:980px){.stats{grid-template-columns:repeat(3,1fr);margin-top:-24px}.toolbar{grid-template-columns:1fr 1fr}.toolbar-actions{grid-column:1/-1}.story-body{grid-template-columns:1fr}}
+    @media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}.toolbar{grid-template-columns:1fr}.epic>summary,.story>summary{grid-template-columns:1fr}.epic-kpis{justify-content:flex-start}.control-grid{grid-template-columns:1fr}}
+    @media print{header{padding:18px}.toolbar,.toolbar-actions,.source-note button{display:none}.wrap{padding:12px}.stats{margin:0}.epic,.story{break-inside:avoid}details{display:block}details>*{display:block!important}}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Implementation roadmap</h1>
+  <p>Live local tracker for the complete master-specification backlog. Canonical delivery stories and source-derived gap stories retain requirement, acceptance-criterion and test traceability with editable delivery status.</p>
+  <div class="meta"><span>Runtime: TypeScript / Node.js 24 LTS</span><span>17 canonical epics</span><span>Canonical and source-derived stories</span><span>Requirement-level acceptance criteria</span><span>Requirement-level tests</span><span>Implementation evidence tracked separately</span></div>
+</header>
+<div class="wrap">
+  <section class="stats" id="stats" aria-label="Roadmap summary"></section>
+  <div class="toolbar" aria-label="Roadmap filters">
+    <input id="search" type="search" placeholder="Search epic, story, backlog ID, acceptance criterion or test…">
+    <select id="phaseFilter" aria-label="Filter by phase"><option value="all">All phases</option></select>
+    <select id="implementationFilter" aria-label="Filter by implementation status"><option value="all">All implementation states</option></select>
+    <select id="testFilter" aria-label="Filter by test status"><option value="all">All test states</option></select>
+    <div class="toolbar-actions"><button id="expandAll">Expand all</button><button id="collapseAll">Collapse</button><button id="export" class="primary">Export status</button><button id="importButton">Import</button><input id="importFile" class="hidden" type="file" accept="application/json"></div>
+  </div>
+  <div class="source-note"><strong>Tracking model.</strong> The catalogue contains 103 canonical delivery stories plus source-derived gap stories generated from the complete master requirement register. “Tracked tests passing” counts roadmap test records whose status is set to Passing; it is not the number of assertions reported by <code>npm test</code>. Status changes save in this browser only. Use <strong>Export status</strong> to preserve or share them.</div>
+  <div class="source-note" id="masterCoverage"></div>
+  <main id="roadmap"></main>
+</div>
+<footer>Updated 2026-09-24 · MVP source: <code>docs/pre-implementation/19-mvp-backlog.md</code> · Future horizons: <code>docs/pre-engineering/SUB-0003_MVP_Scope_Release_Strategy.md</code> · Delivery sequence: <code>docs/pre-implementation/21-technical-implementation-plan.md</code>.</footer>
+
+<script id="roadmap-seed" type="application/json">
+{
+  "version": 1,
+  "generatedAt": "2026-09-23",
+  "epics": [
+    {
+      "id": "SUB-E001", "sourceId": "SUB-001", "name": "Platform Foundation", "phase": "Phase 0", "goal": "Trusted tenant context, idempotency, durable events, canonical errors and tenant isolation.",
+      "stories": [
+        {"id":"US-SUB001-01","title":"Trusted tenant identity","persona":"Platform engineer","backlog":["BL-001-01","BL-001-05"],"implementation":"in_progress","progress":65,"notes":"Resolver, AsyncLocalStorage propagation, body-override rejection and canonical problem model implemented. Auth ingress and event/cache integration remain.","acceptance":["Given a credential for tenant A and a request body asserting tenant B, when processed, then the request is rejected before any domain transaction begins.","Given a request without a body tenant ID, when processed, then the trusted tenant from verified claims is used throughout the transaction, cache keys and emitted events."],"tests":[{"id":"TC-TEN-001","name":"Member context resolves and propagates across asynchronous work","type":"unit","status":"passing"},{"id":"TC-TEN-002","name":"Non-member tenant selection is denied","type":"unit","status":"passing"},{"id":"TC-TEN-003","name":"Request-body tenant override is rejected","type":"security","status":"passing"},{"id":"TC-TEN-004","name":"Suspended or missing context fails closed","type":"unit","status":"passing"},{"id":"TC-TEN-005","name":"Trusted tenant reaches transaction, cache and event envelope","type":"integration","status":"not_run"}]},
+        {"id":"US-SUB001-02","title":"Idempotent financial commands","persona":"API caller","backlog":["BL-001-02"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Given a successful command with key K, an identical retry returns the original response and creates no new effect.","Reusing key K with a different canonical payload returns 409 idempotency_key_reused_with_different_payload."],"tests":[{"id":"TC-IDEM-001","name":"Exact request replay contract","type":"contract","status":"not_run"},{"id":"TC-IDEM-002","name":"Concurrent duplicate race produces one effect","type":"integration","status":"not_run"},{"id":"TC-IDEM-003","name":"Cross-tenant reuse of the same key remains isolated","type":"security","status":"not_run"}]},
+        {"id":"US-SUB001-03","title":"Transactional outbox delivery","persona":"Downstream consumer","backlog":["BL-001-03"],"implementation":"not_started","progress":0,"notes":"","acceptance":["A committed domain transaction includes its outbox record in the same database transaction.","After dispatcher failure, undelivered records are retried and consumers deduplicate by event ID."],"tests":[{"id":"TC-OUT-001","name":"Mutation and event commit or roll back together","type":"integration","status":"not_run"},{"id":"TC-OUT-002","name":"Crash-after-publish replay is safely deduplicated","type":"chaos","status":"not_run"}]},
+        {"id":"US-SUB001-04","title":"Defense-in-depth tenant isolation","persona":"Security reviewer","backlog":["BL-001-04"],"implementation":"not_started","progress":0,"notes":"","acceptance":["With RLS enabled, bypassing an application filter under tenant A still returns zero tenant B rows."],"tests":[{"id":"TC-ISO-001","name":"Tenant A/B read-write-update-delete isolation matrix","type":"security","status":"not_run"},{"id":"TC-ISO-002","name":"Missing database tenant context fails closed","type":"integration","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E002","sourceId":"SUB-002","name":"Identity & Tenancy","phase":"Phase 0","goal":"Atomic tenant provisioning, authentication, RBAC and maker-checker controls.",
+      "stories":[
+        {"id":"US-SUB002-01","title":"Atomic tenant provisioning and lifecycle","persona":"Platform operator","backlog":["BL-002-01"],"implementation":"in_progress","progress":40,"notes":"Pure lifecycle aggregate, optimistic version checks and domain events implemented. Atomic PostgreSQL provisioning remains.","acceptance":["Valid tenant provisioning creates the tenant, default roles and initial administrator together or rolls the whole operation back.","Suspending an active tenant pauses scheduled work without modifying its retained data."],"tests":[{"id":"TC-TLC-001","name":"Provision and activate with versioned facts","type":"unit","status":"passing"},{"id":"TC-TLC-002","name":"Suspend, reactivate and enforce CLOSED as terminal","type":"unit","status":"passing"},{"id":"TC-TLC-003","name":"Reject invalid transitions and stale versions","type":"unit","status":"passing"},{"id":"TC-TLC-004","name":"Provisioning persistence is atomic","type":"integration","status":"not_run"}]},
+        {"id":"US-SUB002-02","title":"Authentication, RBAC and maker-checker","persona":"Finance Controller","backlog":["BL-002-02","BL-002-03","BL-002-04"],"implementation":"not_started","progress":0,"notes":"","acceptance":["A Pricing Manager cannot approve their own rate-card activation request.","A Finance Controller approval records an immutable ApprovalRequest and activates atomically."],"tests":[{"id":"TC-AUTH-001","name":"OIDC/SAML issuer, audience, expiry and MFA validation","type":"security","status":"not_run"},{"id":"TC-RBAC-001","name":"Tenant-scoped deny-by-default permission matrix","type":"security","status":"not_run"},{"id":"TC-MC-001","name":"Self-approval rejection and authorized second-party approval","type":"integration","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E003","sourceId":"SUB-003","name":"Customer Management","phase":"Phase 1","goal":"Stable customer and billing-account records with a composed Customer 360 view.",
+      "stories":[
+        {"id":"US-SUB003-01","title":"Create customer and billing account","persona":"Billing Administrator","backlog":["BL-003-01"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Valid customer and account input creates an ACTIVE account with the configured currency and terms and no subscriptions."],"tests":[{"id":"TC-CUS-001","name":"Customer/account lifecycle and validation","type":"integration","status":"not_run"}]},
+        {"id":"US-SUB003-02","title":"Customer 360 composed view","persona":"Customer Support","backlog":["BL-003-02","BL-003-03"],"implementation":"not_started","progress":0,"notes":"","acceptance":["The view displays identity, MRR/ARR, balance and risk while tabs load independently.","Projection-backed data beyond its freshness SLO displays a freshness indicator."],"tests":[{"id":"TC-C360-001","name":"Partial tab failure remains isolated","type":"integration","status":"not_run"},{"id":"TC-C360-002","name":"Permission-based tab hiding","type":"security","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E004","sourceId":"SUB-004","name":"Product Catalog","phase":"Phase 1","goal":"Versioned, effective-dated products, offers and plans that preserve commercial history.",
+      "stories":[
+        {"id":"US-SUB004-01","title":"Publish a Product Version without altering history","persona":"Product Manager","backlog":["BL-004-01","BL-004-02","BL-004-03"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Publishing v4 leaves active v3 unchanged and does not affect subscriptions referencing v3.","Overlapping effective ranges for the same selector are rejected with a specific error."],"tests":[{"id":"TC-CAT-001","name":"Effective-range overlap rejection","type":"integration","status":"not_run"},{"id":"TC-CAT-002","name":"Existing subscription remains bound to historical version","type":"regression","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E005","sourceId":"SUB-005","name":"Pricing Engine","phase":"Phase 1","goal":"Deterministic no-code pricing, simulation and calculation lineage.",
+      "stories":[
+        {"id":"US-SUB005-01","title":"Configure graduated-tier pricing without code","persona":"Pricing Manager","backlog":["BL-005-01","BL-005-02","BL-005-03","BL-005-04","BL-005-09"],"implementation":"not_started","progress":0,"notes":"Blocked on SPIKE-02 decimal/money selection and SPIKE-06 finance rounding sign-off.","acceptance":["For tiers [0,100] at 10 and (100,1000] at 8 with quantity 150, rating returns exactly 1,400.00."],"tests":[{"id":"TC-PRC-001","name":"Golden pricing examples 3–6","type":"golden","status":"blocked"},{"id":"TC-PRC-002","name":"Tier slices sum to chargeable quantity","type":"property","status":"blocked"}]},
+        {"id":"US-SUB005-02","title":"Persist an explainable calculation trace","persona":"Finance Controller","backlog":["BL-005-05"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Every rated charge stores a versioned calculation trace and operation tree.","Replaying identical canonical input under the same engine version yields a byte-identical result and trace hash."],"tests":[{"id":"TC-TRACE-001","name":"Trace completeness and content-hash determinism","type":"golden","status":"not_run"}]},
+        {"id":"US-SUB005-03","title":"Simulate a candidate rate card","persona":"Pricing Manager","backlog":["BL-005-06","BL-005-07","BL-005-08"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Simulation returns revenue delta, ARPU change, winners/losers and bill-shock counts without mutating production data."],"tests":[{"id":"TC-SIM-001","name":"Simulation produces no domain mutations","type":"integration","status":"not_run"},{"id":"TC-SIM-002","name":"Activation requires maker-checker approval","type":"security","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E006","sourceId":"SUB-006","name":"Subscription Lifecycle","phase":"Phase 1","goal":"Effective-dated, idempotent and auditable subscription changes.",
+      "stories":[
+        {"id":"US-SUB006-01","title":"Schedule cancellation while preserving service","persona":"Subscriber Admin","backlog":["BL-006-01","BL-006-02","BL-006-03"],"implementation":"not_started","progress":0,"notes":"","acceptance":["A future cancellation leaves the subscription ACTIVE with cancel_at set until the effective instant.","A retried scheduler claim applies one scheduled change exactly once."],"tests":[{"id":"TC-SUB-001","name":"Canonical state-transition matrix","type":"unit","status":"not_run"},{"id":"TC-SUB-002","name":"Concurrent scheduled-change retry","type":"integration","status":"not_run"}]},
+        {"id":"US-SUB006-02","title":"Preview mid-cycle change impact","persona":"Billing Administrator","backlog":["BL-006-04","BL-006-05"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Increasing seats mid-cycle returns a deterministic proration trace before confirmation; persistence occurs only after explicit confirmation."],"tests":[{"id":"TC-SUB-003","name":"Preview is non-mutating and matches committed result","type":"integration","status":"not_run"},{"id":"TC-SUB-004","name":"Concurrent stale version is rejected","type":"concurrency","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E007","sourceId":"SUB-007","name":"Billing Engine","phase":"Phase 2","goal":"Scheduled, checkpointed and restartable billing runs.",
+      "stories":[
+        {"id":"US-SUB007-01","title":"Restartable billing run","persona":"Billing Administrator","backlog":["BL-007-01","BL-007-02","BL-007-03"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Retrying a partially failed billing run skips completed accounts and reconciles control totals at completion."],"tests":[{"id":"TC-BILL-001","name":"Restart/resume with checkpointed accounts","type":"integration","status":"not_run"},{"id":"TC-BILL-002","name":"Billing control totals reconcile","type":"reconciliation","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E008","sourceId":"SUB-008","name":"Invoice Management","phase":"Phase 2","goal":"Atomic invoice finalization, immutable posted documents and governed corrections.",
+      "stories":[
+        {"id":"US-SUB008-01","title":"Idempotent atomic invoice finalization","persona":"Billing Administrator","backlog":["BL-008-01","BL-008-02","BL-008-03","BL-008-05","BL-008-06"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Two concurrent finalize calls create exactly one invoice number, receivable and journal transaction."],"tests":[{"id":"TC-INV-001","name":"Concurrent finalize race and replay","type":"concurrency","status":"not_run"},{"id":"TC-INV-002","name":"Invoice, receivable and journal totals reconcile","type":"golden","status":"not_run"}]},
+        {"id":"US-SUB008-02","title":"Correct a posted invoice through a credit note","persona":"Finance Controller","backlog":["BL-008-04"],"implementation":"not_started","progress":0,"notes":"","acceptance":["A credit note links to the posted invoice while the original lines and totals remain unchanged."],"tests":[{"id":"TC-INV-003","name":"Posted invoice immutability and correction lineage","type":"integration","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E009","sourceId":"SUB-009","name":"Payments","phase":"Phase 3","goal":"Provider-neutral payment state, safe retries, verified webhooks and correct allocation.",
+      "stories":[
+        {"id":"US-SUB009-01","title":"Prevent duplicate charge after ambiguous timeout","persona":"Platform engineer","backlog":["BL-009-01","BL-009-02","BL-009-03"],"implementation":"not_started","progress":0,"notes":"Blocked until the Stripe account-model decision is concrete.","acceptance":["An ambiguous provider timeout places the attempt in UNKNOWN and reconciles the same provider idempotency reference before another attempt is allowed."],"tests":[{"id":"TC-PAY-001","name":"Provider timeout and UNKNOWN reconciliation","type":"simulation","status":"blocked"},{"id":"TC-PAY-002","name":"Financial command idempotent replay","type":"contract","status":"not_run"}]},
+        {"id":"US-SUB009-02","title":"Quarantine a mismatched payment webhook","persona":"Platform engineer","backlog":["BL-009-04"],"implementation":"not_started","progress":0,"notes":"","acceptance":["A success webhook whose amount differs from the stored attempt is quarantined and changes no payment state."],"tests":[{"id":"TC-PAY-003","name":"Webhook signature, deduplication and amount mismatch","type":"security","status":"not_run"}]},
+        {"id":"US-SUB009-03","title":"Allocate one payment across receivables","persona":"Billing Administrator","backlog":["BL-009-05","BL-009-06","BL-009-07"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Allocation never exceeds the payment amount or any receivable's open amount."],"tests":[{"id":"TC-ALLOC-001","name":"Allocation boundary invariant","type":"property","status":"not_run"},{"id":"TC-REF-001","name":"Refund lifecycle and approval threshold","type":"integration","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E010","sourceId":"SUB-010","name":"Subscriber Portal","phase":"Phase 4","goal":"Transparent self-service billing and subscription management without dark patterns.",
+      "stories":[
+        {"id":"US-SUB010-01","title":"See upcoming amount and payment risk","persona":"Subscriber Admin","backlog":["BL-010-01","BL-010-02","BL-010-03"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Portal Home presents a bill-shock alert and estimated bill range when usage trends above the account norm."],"tests":[{"id":"TC-PORTAL-001","name":"Account-scoped portal session cannot cross accounts","type":"security","status":"not_run"},{"id":"TC-PORTAL-002","name":"Bill estimate reconciles to server calculation","type":"integration","status":"not_run"}]},
+        {"id":"US-SUB010-02","title":"Cancellation is as easy as upgrade","persona":"Subscriber Admin","backlog":["BL-010-04","BL-010-05"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Cancel has equal visual prominence to Upgrade and shows exact effective date and financial impact before confirmation."],"tests":[{"id":"TC-PORTAL-003","name":"No-dark-pattern cancellation UX audit","type":"ux","status":"not_run"},{"id":"TC-PORTAL-004","name":"Cancellation preview matches committed change","type":"integration","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E011","sourceId":"SUB-011","name":"Usage & Metering","phase":"Phase 2","goal":"Durable, deduplicated and replayable usage feeding deterministic rating.",
+      "stories":[
+        {"id":"US-SUB011-01","title":"Durable acknowledgement of usage batches","persona":"Merchant developer","backlog":["BL-011-01","BL-011-02","BL-011-03","BL-011-04"],"implementation":"not_started","progress":0,"notes":"Blocked on throughput target and partitioning spikes.","acceptance":["A mixed batch returns an item-level ACCEPTED, DUPLICATE, REJECTED or QUARANTINED disposition, and accepted events are durable before acknowledgement."],"tests":[{"id":"TC-USG-001","name":"Batch disposition and durable acknowledgement","type":"integration","status":"blocked"},{"id":"TC-USG-002","name":"Source-event deduplication under concurrency","type":"concurrency","status":"not_run"}]},
+        {"id":"US-SUB011-02","title":"Handle late usage without rewriting an invoice","persona":"Billing Administrator","backlog":["BL-011-05","BL-011-06"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Usage arriving after posting creates a linked adjustment charge and never edits the posted invoice line."],"tests":[{"id":"TC-USG-003","name":"Late-event and correction golden case","type":"golden","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E012","sourceId":"SUB-012","name":"Collections","phase":"Phase 4","goal":"Preventive, explainable and policy-bounded collections intelligence.",
+      "stories":[
+        {"id":"US-SUB012-01","title":"Explain every collections risk score","persona":"Collections Agent","backlog":["BL-012-01","BL-012-02"],"implementation":"not_started","progress":0,"notes":"","acceptance":["A risk band always includes factor codes, contribution direction, policy version and generation time."],"tests":[{"id":"TC-COL-001","name":"Risk score reason-code completeness","type":"contract","status":"not_run"},{"id":"TC-COL-002","name":"Protected-attribute exclusion and fairness review","type":"security","status":"not_run"}]},
+        {"id":"US-SUB012-02","title":"Payment & Collections Intelligence summary","persona":"Finance Controller","backlog":["BL-012-03","BL-012-05","BL-012-06"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Every account with an open or upcoming invoice returns amount, risk band, preferred channel and next best action with reason codes and policy version."],"tests":[{"id":"TC-COL-003","name":"Deterministic fallback during model outage","type":"resilience","status":"not_run"},{"id":"TC-COL-004","name":"Summary fields and reason codes contract","type":"contract","status":"not_run"}]},
+        {"id":"US-SUB012-03","title":"Reactivate a broken promise without duplicating its case","persona":"Collections Manager","backlog":["BL-012-04"],"implementation":"not_started","progress":0,"notes":"","acceptance":["An overdue unfulfilled promise reactivates and reprioritizes the existing case rather than creating another case."],"tests":[{"id":"TC-COL-005","name":"Broken-promise case reactivation","type":"integration","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E013","sourceId":"SUB-013","name":"Notifications","phase":"Phase 5","goal":"Versioned notification templates and delivery tracking independent of financial truth.",
+      "stories":[
+        {"id":"US-SUB013-01","title":"Track reminder delivery independently","persona":"Billing Administrator","backlog":["BL-013-01","BL-013-02"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Provider failure marks the notification FAILED with a safe reason and does not change invoice or payment state."],"tests":[{"id":"TC-NOT-001","name":"Delivery failure leaves financial state unchanged","type":"integration","status":"not_run"},{"id":"TC-NOT-002","name":"Provider secrets never enter payloads or logs","type":"security","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E014","sourceId":"SUB-014","name":"Analytics","phase":"Phase 5","goal":"Version-controlled revenue and collections metrics with one semantic definition.",
+      "stories":[
+        {"id":"US-SUB014-01","title":"One defined MRR calculation","persona":"Executive","backlog":["BL-014-01","BL-014-02"],"implementation":"not_started","progress":0,"notes":"","acceptance":["MRR uses one version-controlled semantic definition and matches the Revenue Dashboard exactly."],"tests":[{"id":"TC-ANA-001","name":"Metric-definition regression against fixed dataset","type":"regression","status":"not_run"},{"id":"TC-ANA-002","name":"Dashboard and semantic-layer values reconcile","type":"reconciliation","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E015","sourceId":"SUB-015","name":"AI Revenue Intelligence","phase":"Phase 5","goal":"Grounded, bounded assistance with no autonomous financial action in the MVP.",
+      "stories":[
+        {"id":"US-SUB015-01","title":"Grounded bill explanation","persona":"Subscriber","backlog":["BL-015-01","BL-015-02"],"implementation":"not_started","progress":0,"notes":"AI remains L0 until autonomy thresholds are explicitly approved.","acceptance":["Explain my bill uses exact trace/RLG facts and explicitly reports missing evidence instead of fabricating an explanation."],"tests":[{"id":"TC-AI-001","name":"Grounding and fabrication evaluation set","type":"evaluation","status":"not_run"},{"id":"TC-AI-002","name":"Prompt-injection and tenant-data isolation","type":"security","status":"not_run"}]},
+        {"id":"US-SUB015-02","title":"AI actions use normal authorization and approvals","persona":"Security reviewer","backlog":["BL-015-03"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Acting on an AI suggestion invokes the same authorized command and approval gate as a human-initiated request."],"tests":[{"id":"TC-AI-003","name":"AI tool permission parity and approval enforcement","type":"security","status":"not_run"},{"id":"TC-AI-004","name":"AI invocation is fully audited","type":"integration","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E016","sourceId":"SUB-016","name":"Integration Framework","phase":"Phase 5","goal":"Provider-neutral connector primitives and reliable signed webhook delivery.",
+      "stories":[
+        {"id":"US-SUB016-01","title":"Replay a missed merchant webhook","persona":"Merchant developer","backlog":["BL-016-01","BL-016-02","BL-016-03"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Manual replay redelivers the exact original event envelope under a new delivery ID."],"tests":[{"id":"TC-INT-001","name":"Webhook signature verification and replay contract","type":"contract","status":"not_run"},{"id":"TC-INT-002","name":"Outbound endpoint SSRF controls","type":"security","status":"not_run"}]}
+      ]
+    },
+    {
+      "id":"SUB-E017","sourceId":"SUB-017","name":"Audit & Compliance","phase":"Phase 0 / Phase 6","goal":"Immutable audit evidence and release-blocking tenant-isolation verification.",
+      "stories":[
+        {"id":"US-SUB017-01","title":"Audit every financial mutation","persona":"Auditor","backlog":["BL-017-01","BL-017-02","BL-017-04"],"implementation":"not_started","progress":0,"notes":"Append-only write path is Phase 0; timeline and export complete during hardening.","acceptance":["Every committed financial mutation has actor, action, reason, correlation ID and safe before/after evidence."],"tests":[{"id":"TC-AUD-001","name":"Audit record commits atomically with mutation","type":"integration","status":"not_run"},{"id":"TC-AUD-002","name":"Audit update/delete is rejected and secrets are redacted","type":"security","status":"not_run"}]},
+        {"id":"US-SUB017-02","title":"Block release on tenant-isolation failure","persona":"Security reviewer","backlog":["BL-017-03"],"implementation":"not_started","progress":0,"notes":"","acceptance":["Any failing case in the full isolation matrix blocks the release pipeline."],"tests":[{"id":"TC-AUD-003","name":"Full tenant-isolation negative matrix","type":"security","status":"not_run"},{"id":"TC-AUD-004","name":"CI release gate fails on injected isolation regression","type":"pipeline","status":"not_run"}]}
+      ]
+    }
+  ]
+}
+</script>
+<script src="implementation-roadmap-data.js"></script>
+<script src="normalized-backlog-data.js"></script>
+<script src="requirement-register-data.js"></script>
+<script>
+(() => {
+  "use strict";
+  const STORAGE_KEY = "sintius-implementation-roadmap-v1";
+  const IMPL = ["not_started","in_progress","implemented","blocked","deferred"];
+  const TEST = ["not_run","partial","passing","failing","blocked"];
+  const LABEL = {not_started:"Not started",in_progress:"In progress",implemented:"Implemented",blocked:"Blocked",deferred:"Deferred",not_run:"Not run",partial:"Partial",passing:"Passing",failing:"Failing"};
+  const seed = globalThis.SINTIUS_ROADMAP || JSON.parse(document.getElementById("roadmap-seed").textContent);
+  const masterCoverage = globalThis.SINTIUS_REQUIREMENT_COVERAGE;
+  let overrides = load();
+  const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+  const label = value => LABEL[value] || value.replaceAll("_", " ");
+  document.getElementById("masterCoverage").innerHTML = masterCoverage
+    ? `<strong>Backlog traceability is ${masterCoverage.backlogTraceabilityStatus}; implementation coverage is ${masterCoverage.implementationCoverageStatus}.</strong> ${masterCoverage.reviewed.count}/${masterCoverage.denominator} candidates dispositioned; ${masterCoverage.storyMapped.count}/${masterCoverage.accepted.count} story-mapped; ${masterCoverage.acceptanceCriteriaMapped.count}/${masterCoverage.accepted.count} acceptance-criterion-mapped; ${masterCoverage.testMapped.count}/${masterCoverage.accepted.count} test-mapped; ${masterCoverage.implementationEvidence.count}/${masterCoverage.accepted.count} have implementation evidence. <a href="requirement-register.html">Open the ground-truth requirement register</a>.`
+    : `<strong>Master-specification coverage is unavailable.</strong> Run <code>npm.cmd run requirements:generate</code> and reload.`;
+
+  function load(){ try{return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");}catch{return {};} }
+  function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides)); }
+  function storyState(story){
+    const saved = overrides[story.id] || {};
+    const tests = story.tests.map(test => ({...test,status:(saved.tests && saved.tests[test.id]) || test.status}));
+    return {...story,...saved,tests};
+  }
+  function updateStory(id, patch){ overrides[id] = {...(overrides[id]||{}),...patch,updatedAt:new Date().toISOString()}; save(); render(); }
+  function updateTest(storyId, testId, status){ const old=overrides[storyId]||{}; updateStory(storyId,{tests:{...(old.tests||{}),[testId]:status}}); }
+  function testRollup(tests){ if(tests.some(t=>t.status==="failing"))return "failing"; if(tests.some(t=>t.status==="blocked"))return "blocked"; if(tests.every(t=>t.status==="passing"))return "passing"; if(tests.every(t=>t.status==="not_run"))return "not_run"; return "partial"; }
+  function optionList(values,current){return values.map(value=>`<option value="${value}" ${value===current?"selected":""}>${esc(label(value))}</option>`).join("");}
+  function allStories(){return seed.epics.flatMap(epic=>epic.stories.map(story=>({...storyState(story),epic})));}
+
+  const phaseFilter=document.getElementById("phaseFilter"), implFilter=document.getElementById("implementationFilter"), testFilter=document.getElementById("testFilter"), search=document.getElementById("search");
+  [...new Set(seed.epics.flatMap(e=>e.stories.map(s=>s.phase||e.phase)))].forEach(p=>phaseFilter.insertAdjacentHTML("beforeend",`<option>${esc(p)}</option>`));
+  IMPL.forEach(s=>implementationFilter.insertAdjacentHTML("beforeend",`<option value="${s}">${esc(label(s))}</option>`));
+  TEST.forEach(s=>testFilter.insertAdjacentHTML("beforeend",`<option value="${s}">${esc(label(s))}</option>`));
+
+  function matches(epic,story){
+    const q=search.value.trim().toLowerCase(), rollup=testRollup(story.tests);
+    if(phaseFilter.value!=="all"&&(story.phase||epic.phase)!==phaseFilter.value)return false;
+    if(implementationFilter.value!=="all"&&story.implementation!==implementationFilter.value)return false;
+    if(testFilter.value!=="all"&&rollup!==testFilter.value)return false;
+    if(!q)return true;
+    return [epic.id,epic.sourceId,epic.name,epic.goal,story.id,story.title,story.persona,story.notes,...story.backlog,...story.acceptance,...story.tests.flatMap(t=>[t.id,t.name,t.type])].join(" ").toLowerCase().includes(q);
+  }
+  function renderStats(){
+    const stories=allStories(), acceptance=stories.reduce((sum,story)=>sum+(story.acceptanceCriteria?.length||story.acceptance.length),0), tests=stories.flatMap(s=>s.tests), done=stories.filter(s=>s.implementation==="implemented").length, active=stories.filter(s=>s.implementation==="in_progress").length, passed=tests.filter(t=>t.status==="passing").length, failing=tests.filter(t=>t.status==="failing").length;
+    document.getElementById("stats").innerHTML=[
+      [seed.epics.length,"Epics"],[stories.length,"User stories"],[acceptance,"Acceptance criteria"],[done,"Implemented"],[active,"In progress"],[`${passed}/${tests.length}`,"Tracked tests passing"],[failing,"Tracked tests failing"]
+    ].map(([n,l])=>`<div class="stat"><strong>${n}</strong><span>${l}</span></div>`).join("");
+  }
+  function render(){
+    renderStats();
+    const html=seed.epics.map(epic=>{
+      const stories=epic.stories.map(storyState), visible=stories.filter(story=>matches(epic,story));
+      if(!visible.length)return "";
+      const epicProgress=Math.round(stories.reduce((sum,s)=>sum+Number(s.progress||0),0)/stories.length), done=stories.filter(s=>s.implementation==="implemented").length;
+      return `<details class="epic" ${search.value?"open":""}><summary><div><div class="epic-title"><span class="epic-id">${esc(epic.id)} · ${esc(epic.sourceId)}</span><h2>${esc(epic.name)}</h2><span class="badge status-in_progress">${esc(epic.phase)}</span></div><p class="epic-goal">${esc(epic.goal)}</p></div><div class="epic-kpis"><span>${done}/${stories.length} implemented</span><div class="progress" title="${epicProgress}%"><i style="width:${epicProgress}%"></i></div><strong>${epicProgress}%</strong></div></summary><div class="stories">${visible.map(storyHtml).join("")}</div></details>`;
+    }).join("");
+    document.getElementById("roadmap").innerHTML=html||`<div class="empty">No roadmap items match these filters.</div>`;
+    bindEditors();
+  }
+  function storyHtml(story){
+    const rollup=testRollup(story.tests);
+    return `<details class="story"><summary><div><h3><span class="epic-id">${esc(story.id)}</span> · ${esc(story.title)}</h3><div class="story-sub"><span>${esc(story.persona)}</span><span class="badge status-in_progress">${esc(story.phase)}</span>${story.backlog.map(id=>`<span class="badge status-not_started">${esc(id)}</span>`).join("")}</div></div><div class="epic-kpis"><span class="badge status-${story.implementation}">${esc(label(story.implementation))}</span><span class="badge status-${rollup}">Tests: ${esc(label(rollup))}</span><strong>${Number(story.progress||0)}%</strong></div></summary><div class="story-body"><section><h4>Acceptance criteria</h4><ol>${story.acceptance.map(ac=>`<li>${esc(ac)}</li>`).join("")}</ol><h4>Associated tests</h4>${story.tests.map(test=>`<div class="test"><div><span class="test-id">${esc(test.id)} · ${esc(test.type)}</span><br>${esc(test.name)}</div><select data-test-story="${story.id}" data-test-id="${test.id}" aria-label="Status for ${esc(test.id)}">${optionList(TEST,test.status)}</select></div>`).join("")}</section><aside class="controls"><div class="control-grid"><div><label>Implementation</label><select data-impl="${story.id}">${optionList(IMPL,story.implementation)}</select></div><div><label>Progress</label><select data-progress="${story.id}">${[0,10,25,40,50,65,75,90,100].map(n=>`<option value="${n}" ${Number(story.progress)===n?"selected":""}>${n}%</option>`).join("")}</select></div></div><label style="margin-top:10px">Status notes</label><textarea data-notes="${story.id}" placeholder="Decision, blocker, evidence or next step…">${esc(story.notes)}</textarea></aside></div></details>`;
+  }
+  function bindEditors(){
+    document.querySelectorAll("[data-impl]").forEach(el=>el.addEventListener("change",e=>updateStory(e.target.dataset.impl,{implementation:e.target.value,progress:e.target.value==="implemented"?100:Number((overrides[e.target.dataset.impl]||{}).progress??0)})));
+    document.querySelectorAll("[data-progress]").forEach(el=>el.addEventListener("change",e=>updateStory(e.target.dataset.progress,{progress:Number(e.target.value)})));
+    document.querySelectorAll("[data-notes]").forEach(el=>el.addEventListener("change",e=>updateStory(e.target.dataset.notes,{notes:e.target.value})));
+    document.querySelectorAll("[data-test-story]").forEach(el=>el.addEventListener("change",e=>updateTest(e.target.dataset.testStory,e.target.dataset.testId,e.target.value)));
+  }
+  [search,phaseFilter,implementationFilter,testFilter].forEach(el=>el.addEventListener(el===search?"input":"change",render));
+  document.getElementById("expandAll").addEventListener("click",()=>document.querySelectorAll("details").forEach(d=>d.open=true));
+  document.getElementById("collapseAll").addEventListener("click",()=>document.querySelectorAll("details").forEach(d=>d.open=false));
+  document.getElementById("export").addEventListener("click",()=>{
+    const payload={schemaVersion:1,exportedAt:new Date().toISOString(),source:"implementation-roadmap.html",overrides};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}),a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download=`sintius-roadmap-status-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);
+  });
+  document.getElementById("importButton").addEventListener("click",()=>document.getElementById("importFile").click());
+  document.getElementById("importFile").addEventListener("change",async e=>{
+    const file=e.target.files[0];if(!file)return;
+    try{const payload=JSON.parse(await file.text());if(payload.schemaVersion!==1||typeof payload.overrides!=="object")throw new Error("Unsupported status file");overrides=payload.overrides;save();render();}catch(error){alert(`Import failed: ${error.message}`);}finally{e.target.value="";}
+  });
+  render();
+})();
+</script>
+</body>
+</html>

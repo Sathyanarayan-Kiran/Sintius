@@ -1,0 +1,11 @@
+{
+  "name": "identity-tenant",
+  "ownedTables": ["tenant", "tenant_identity_provider", "tenant_role", "tenant_role_assignment"],
+  "publishedEvents": [
+    "tenant.provisioned.v1",
+    "tenant.activated.v1",
+    "tenant.suspended.v1",
+    "tenant.closed.v1"
+  ],
+  "allowedModuleDependencies": []
+}

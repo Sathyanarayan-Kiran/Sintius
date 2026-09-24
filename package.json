@@ -1,0 +1,25 @@
+{
+  "name": "sintius-subscription-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "modules/*",
+    "platform/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "test": "node --test tests/all.test.ts",
+    "check:architecture": "node tools/architecture-lint/src/index.ts",
+    "check:roadmap": "node tools/validate-roadmap.mjs",
+    "requirements:generate": "node tools/requirements/extract-master-requirements.mjs",
+    "backlog:generate": "node tools/backlog/normalize-master-backlog.mjs",
+    "check:requirements": "node tools/requirements/check-coverage.mjs",
+    "check": "npm run check:architecture && npm run check:roadmap && npm run check:requirements && npm test"
+  }
+}

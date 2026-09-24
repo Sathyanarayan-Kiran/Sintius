@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.example.com/events/payment.succeeded.v1.json",
+  "title": "payment.succeeded.v1",
+  "description": "Public domain event. Logical payment reached SUCCEEDED per docs/pre-implementation/10-payment-state-machine.md section 2. Never carries raw payment credentials or provider secrets.",
+  "allOf": [
+    { "$ref": "https://schemas.example.com/events/envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "com.subrevos.payment.succeeded.v1" },
+        "data": {
+          "type": "object",
+          "required": ["payment_id", "account_id", "amount_minor", "currency", "payment_method_id"],
+          "properties": {
+            "payment_id": { "type": "string" },
+            "account_id": { "type": "string" },
+            "amount_minor": { "type": "integer" },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+            "payment_method_id": { "type": "string" },
+            "succeeding_attempt_id": { "type": "string" },
+            "gateway_id": { "type": "string" },
+            "settlement_reference": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}
