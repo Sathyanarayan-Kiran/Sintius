@@ -10208,9 +10208,9 @@
           "backlog": [
             "BL-002-02"
           ],
-          "implementation": "not_started",
-          "progress": 0,
-          "notes": "",
+          "implementation": "in_progress",
+          "progress": 65,
+          "notes": "Provider-neutral authentication policy, claims mapping, MFA, issuer, audience, lifetime and revocation checks are implemented and exercised with test doubles. Real OIDC/SAML signature and key-discovery adapters, durable sessions and security audit facts remain.",
           "acceptance": [
             "Only tokens with valid signature, issuer, audience, expiry and required assurance create a session.",
             "Session expiry and revocation deny subsequent requests without exposing token contents."
@@ -10220,13 +10220,13 @@
               "id": "TC-002-02-01",
               "name": "OIDC/SAML claim and key validation",
               "type": "security",
-              "status": "not_run"
+              "status": "partial"
             },
             {
               "id": "TC-002-02-02",
               "name": "MFA, expiry and revocation behavior",
               "type": "integration",
-              "status": "not_run"
+              "status": "partial"
             }
           ],
           "epicId": "SUB-E002",
@@ -10260,9 +10260,9 @@
           "backlog": [
             "BL-002-03"
           ],
-          "implementation": "not_started",
-          "progress": 0,
-          "notes": "",
+          "implementation": "in_progress",
+          "progress": 50,
+          "notes": "Implemented and unit-tested against in-memory doubles only: platform permission catalog from the API spec, deny-by-default tenant-scoped evaluator with live role lookup (revocation applies on the next command; workload principals need explicit scopes), fail-closed ABAC narrowing, role assignment commands (no self-change), and an Audit & Governance approval aggregate (PENDING/APPROVED/REJECTED/EXPIRED/CANCELLED, separation of duties, distinct approvers, exact action/resource/version matching, version CAS) with handlers requiring an interactive MFA principal and committing decision, audit and outbox event in one unit of work. Both tests stay partial: the matrix covers a fixture, not a reviewed permission matrix for all 12 personas, and no PostgreSQL adapter, RLS or immutable audit store exists. Remaining: persistence adapters, ingress permission declaration, approval expiry sweeper, ApprovalPolicy management, platform-role scoping and replacing the platform authorizer port, denial/approval-latency metrics, UI.",
           "acceptance": [
             "Permissions are tenant-scoped and deny by default.",
             "A proposer cannot approve their own governed request; an authorized second actor can approve it atomically.",
@@ -10291,13 +10291,13 @@
               "id": "TC-002-03-01",
               "name": "Role-permission allow/deny matrix",
               "type": "security",
-              "status": "not_run"
+              "status": "partial"
             },
             {
               "id": "TC-002-03-02",
               "name": "Self-approval rejection and second-party approval",
               "type": "integration",
-              "status": "not_run"
+              "status": "partial"
             }
           ],
           "epicId": "SUB-E002",
@@ -10541,9 +10541,9 @@
           "backlog": [
             "BL-002-04"
           ],
-          "implementation": "not_started",
-          "progress": 0,
-          "notes": "",
+          "implementation": "in_progress",
+          "progress": 65,
+          "notes": "Workload tenant, audience and operation-scope validation, down-scoping and interactive-session separation are implemented. The production signed-token or mTLS verifier, credential issuance and rotation remain.",
           "acceptance": [
             "Each worker uses a short-lived workload identity scoped to its required tenant and operations.",
             "A workload identity cannot create an interactive session or exceed its declared audience."
@@ -10553,13 +10553,13 @@
               "id": "TC-002-04-01",
               "name": "Workload audience and scope enforcement",
               "type": "security",
-              "status": "not_run"
+              "status": "partial"
             },
             {
               "id": "TC-002-04-02",
               "name": "Workload/interactive identity separation",
               "type": "contract",
-              "status": "not_run"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E002",

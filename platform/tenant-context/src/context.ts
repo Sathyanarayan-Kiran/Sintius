@@ -13,6 +13,11 @@ export interface AuthenticatedPrincipal {
   readonly kind: "interactive" | "workload";
   readonly tenantMemberships: readonly TenantId[];
   readonly assurance: "single-factor" | "mfa" | "workload";
+  readonly credentialId?: string;
+  readonly issuer?: string;
+  readonly audiences?: readonly string[];
+  readonly scopes?: readonly string[];
+  readonly expiresAt?: string;
 }
 
 export interface TenantContext {
@@ -21,6 +26,10 @@ export interface TenantContext {
   readonly principalKind: AuthenticatedPrincipal["kind"];
   readonly correlationId: string;
   readonly causationId?: string;
+  readonly assurance: AuthenticatedPrincipal["assurance"];
+  readonly credentialId?: string;
+  readonly audiences: readonly string[];
+  readonly scopes: readonly string[];
 }
 
 export interface ResolveTenantContextInput {
@@ -101,7 +110,11 @@ export function resolveTenantContext(input: ResolveTenantContextInput): Readonly
     tenantId: input.selectedTenantId,
     actorId: input.principal.actorId,
     principalKind: input.principal.kind,
+    assurance: input.principal.assurance,
     correlationId: requireNonBlank(input.correlationId, "correlationId"),
+    ...(input.principal.credentialId === undefined ? {} : { credentialId: input.principal.credentialId }),
+    audiences: Object.freeze([...(input.principal.audiences ?? [])]),
+    scopes: Object.freeze([...(input.principal.scopes ?? [])]),
     ...(input.causationId === undefined ? {} : { causationId: input.causationId }),
   };
   return issue(context);
@@ -136,7 +149,11 @@ export function runWithTenantContext<T>(context: Readonly<TenantContext>, operat
     (active.tenantId !== context.tenantId ||
       active.actorId !== context.actorId ||
       active.principalKind !== context.principalKind ||
-      active.correlationId !== context.correlationId)
+      active.assurance !== context.assurance ||
+      active.correlationId !== context.correlationId ||
+      active.credentialId !== context.credentialId ||
+      active.audiences.join("\u0000") !== context.audiences.join("\u0000") ||
+      active.scopes.join("\u0000") !== context.scopes.join("\u0000"))
   ) {
     throw problem({
       title: "Tenant context mismatch",

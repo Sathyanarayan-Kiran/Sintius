@@ -1,0 +1,10 @@
+{
+  "name": "@sintius/audit-governance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./domain/approval.ts",
+    "./application": "./application/approval-commands.ts"
+  }
+}

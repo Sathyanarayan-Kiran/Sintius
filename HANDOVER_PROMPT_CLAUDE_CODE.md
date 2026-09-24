@@ -53,6 +53,7 @@ Read these files before modifying production code:
 8. `docs/pre-engineering/SUB-0019_Test_Strategy_Financial_Correctness_Framework.md`
 9. `docs/implementation/requirement-coverage.json`
 10. The relevant epic and stories in `docs/implementation/normalized-backlog.json` for the tranche you will implement.
+11. For P0-005 specifically: master specification sections 61-62, `docs/pre-implementation/13-api-specification.md` section 4, `docs/pre-implementation/15-security-architecture.md` section 5, `docs/pre-implementation/07-data-model-erd.md`, `docs/pre-engineering/SUB-0014_Security_Privacy_Compliance_Architecture.md` sections 3 and 16, and `docs/pre-engineering/SUB-0021_MVP_Delivery_Backlog.md` story US-E002-01.
 
 Read domain-specific canonical sources before touching that domain. For example, pricing requires both pricing specifications; payments require the payment state machine, payment/collections specification, API contracts, event contracts, security architecture and relevant decisions.
 
@@ -83,8 +84,8 @@ These distinctions are non-negotiable:
 - A source candidate is not automatically a delivery requirement.
 - A mapped requirement is not an implemented requirement.
 - A planned test is not a passing automated test.
-- The roadmap currently has four tracked test records marked `passing`.
-- `npm test` currently executes seven lower-level automated test assertions. These counts measure different things and must not be conflated.
+- The canonical roadmap source currently has seven tracked test records marked `passing` and three marked `partial`; the combined normalized catalogue still contains 1,469 planned test records.
+- `npm test` currently executes 59 lower-level automated tests. These counts measure different things and must not be conflated.
 - Never report `100% implemented`, `100% tested`, or equivalent based on backlog mapping percentages.
 
 ## 5. Jira and traceability outputs
@@ -135,75 +136,91 @@ The HTML roadmap stores interactive status changes in browser `localStorage`. Th
 
 ## 7. Current implementation state
 
-Implemented code is intentionally narrow:
+The current implementation is still a Phase 0 foundation, but it is broader than the original handover. Verify every item in code before relying on it.
 
-- `platform/problem-model/src/index.ts`
-  - Canonical problem detail type.
-  - Stable problem codes.
-  - Optional correlation ID.
-- `platform/tenant-context/src/index.ts`
-  - Branded tenant and actor IDs.
-  - Authenticated principal model.
-  - Membership validation.
-  - Rejection of tenant identity supplied in request bodies.
-  - ACTIVE-tenant enforcement.
-  - Immutable `AsyncLocalStorage` context propagation.
-  - Fail-closed missing-context behavior.
-- `modules/identity-tenant/domain/tenant.ts`
-  - Tenant provisioning.
-  - Explicit lifecycle transition table.
-  - Optimistic version checks.
-  - Terminal CLOSED state.
-  - Versioned tenant domain events.
-- `tools/architecture-lint/src/index.ts`
-  - Initial bounded-context/table-ownership architecture validation.
-- `tests/all.test.ts`
-  - Aggregates the two current test modules.
+- `platform/problem-model` (`P0-002`, `US-BL-001-05`, roadmap progress 80%):
+  - Frozen RFC 7807/9457-compatible problem-code catalogue.
+  - Trusted trace/correlation identifier validation.
+  - Transport-neutral error boundary.
+  - Known errors use allow-listed external fields; unexpected errors become sanitized 500 responses while redacted internal evidence is retained.
+  - A repository-scan test requires every literal `problem({code})` to be catalogued; adding a code requires updating `catalog.ts` and its golden contract test.
+  - Remaining: concrete HTTP ingress adapter, error metrics/log dimensions and UI code-to-copy mapping.
+- `platform/tenant-context` and `platform/event-envelope` (`P0-001`, `US-BL-001-01`, roadmap progress 85%):
+  - Resolver-issued tenant and platform contexts, AsyncLocalStorage propagation, nested-context replacement guards, body tenant rejection, tenant-scoped cache keys and tenant-bound transaction ports.
+  - CloudEvents-style envelope stamps tenant, actor, correlation and causation only from trusted scope and rejects tenant identity restated in payloads.
+  - Authenticated credential ID, audience and scopes now propagate into contexts; nested work cannot replace them to escalate scope.
+  - Remaining: real PostgreSQL/RLS transaction binding, worker/job composition and real cache adapter.
+- `modules/identity-tenant` tenant lifecycle (`P0-003`, `US-BL-002-01`, roadmap progress 60%):
+  - Pure lifecycle aggregate plus provision/activate/suspend/reactivate/close application handlers.
+  - Authorize first, then one unit-of-work port writes tenant, default administrator role, initial administrator membership, audit record and outbox envelope.
+  - In-memory rollback tests prove application semantics only. They are not PostgreSQL atomicity evidence.
+  - Remaining: real PostgreSQL adapter/migrations, atomicity integration test, real authorizer and HTTP ingress.
+- `modules/identity-tenant` authentication (`P0-004`):
+  - `US-BL-002-02` is `in_progress`, 65%; both roadmap tests remain `partial`.
+  - `US-BL-002-04` is `in_progress`, 65%; workload audience/scope enforcement remains `partial`, workload/interactive separation is `passing`.
+  - Provider-neutral policy, credential-verifier and revocation ports implement OIDC/SAML/workload claim enforcement for mechanism, issuer, audience, expiry/not-before, MFA, revocation, tenant binding and workload operation down-scoping.
+  - Real OIDC/JWKS and SAML certificate verification, signed-token or mTLS workload adapter, durable session/revocation persistence, issuance/rotation and authentication audit facts remain.
+- `tools/architecture-lint` validates module manifests and owned-table declarations.
+- `tests/all.test.ts` imports all seven test modules. The last verified `npm.cmd run check` passed all 59 tests.
 
-Current canonical roadmap status:
+Current durable canonical status lives in `docs/implementation/implementation-roadmap-data.js`. Do not use browser-local roadmap status as evidence.
 
-- `US-BL-001-01` / `BL-001-01` trusted tenant context: `in_progress`, 65%.
-  - Implemented: resolver, membership/ACTIVE checks, body override rejection and asynchronous context propagation.
-  - Remaining: integration into transaction, cache and event-envelope boundaries.
-- `US-BL-001-05` / `BL-001-05` canonical problems and trace identifiers: `in_progress`, 50%.
-  - Implemented: canonical problem model.
-  - Remaining: ingress/adapter mappings, sanitized unexpected-error behavior, correlation propagation and dedicated adapter tests.
-- `US-BL-002-01` / `BL-002-01` tenant lifecycle: `in_progress`, 40%.
-  - Implemented: pure lifecycle aggregate and unit tests.
-  - Remaining: application command handler, persistence port/adapter, atomic provisioning of tenant/default role/admin/audit/outbox, and integration tests.
-- All other canonical and source-derived stories are `not_started` unless the repository shows newer evidence.
+The worktree contains the P0-004 implementation and generated roadmap updates as uncommitted changes. They are intentional current work, not disposable scratch files. Inspect `git status --short` and preserve them; do not reset, checkout or overwrite them.
 
-At handover, `npm.cmd run check` passes:
+At this handover, `npm.cmd run check` passes:
 
-- Architecture manifests valid.
-- Roadmap hierarchy valid: 17 epics, 103 canonical stories and 167 source-derived stories.
-- Requirement coverage gate valid: 1,540 candidates dispositioned and every accepted requirement mapped to story, acceptance criterion and test.
-- Seven automated tests pass.
+- Architecture manifests: valid, four owned tables across the identity-tenant module.
+- Roadmap: 17 epics, 103 canonical stories, 167 source-derived stories and 1,469 planned tests.
+- Requirements: 1,540/1,540 candidates dispositioned; 1,335 accepted requirements all story-, acceptance-criterion- and test-mapped; implementation evidence remains 0/1,335.
+- Automated execution: 59/59 tests pass.
 
 Re-run the gate yourself. Do not assume this handover remains current after the first command.
 
-## 8. Recommended next implementation tranche
+## 8. Next implementation tranche: P0-005 RBAC and maker-checker
 
-Continue Phase 0. Do not jump to broad feature work merely because the normalized backlog contains later-horizon stories.
+> Status update: implemented at unit level (both canonical tests `partial`); see `HANDOVER_PROMPT_CODEX.md` sections 3-5 for what exists and what remains. The scope notes below are retained as the acceptance reference.
 
-Recommended order:
+The PostgreSQL execution-mode decision and production identity-provider choices are still absent. The next decision-independent tranche is therefore `P0-005` / epic `SUB-E002` / story `US-BL-002-03` / backlog item `BL-002-03`.
 
-1. Finish `P0-002` / `US-BL-001-05` canonical problem and trace adapter behavior.
-   - Define the application/transport boundary mapping for known `PlatformProblem` errors.
-   - Map unexpected exceptions to a sanitized 500 problem without leaking internal values.
-   - Preserve the correlation ID supplied by trusted request context.
-   - Add contract/security tests for known mappings and unexpected-error redaction.
-   - Do not introduce a web framework solely to simulate an adapter; use a small port or adapter abstraction until a concrete HTTP framework is intentionally selected.
-2. Complete the remaining non-persistence portion of `P0-001` / `US-BL-001-01`.
-   - Define how trusted tenant/correlation/causation context reaches command execution, cache namespaces and event envelopes.
-   - Add tests proving tenant context cannot be overridden downstream.
-3. Advance `P0-003` / `US-BL-002-01` through an application command handler and persistence port.
-   - Preserve the pure aggregate.
-   - Keep transaction management outside the domain model.
-   - Do not claim atomic PostgreSQL provisioning complete until a real adapter and integration test prove tenant, default role, initial administrator, audit event and outbox event commit or roll back together.
-4. Then proceed in the Phase 0 critical order from `docs/implementation/phase-0-backlog.md`: authentication/workload identity, RBAC/maker-checker, idempotency, outbox, RLS/repository isolation, audit and the vertical-slice proof.
+Canonical test records:
 
-Before starting each story, retrieve its complete acceptance criteria and linked requirement/test IDs from `docs/implementation/normalized-backlog.json`. The compact Phase 0 document is a delivery guide, not a replacement for the complete traceability record.
+- `TC-002-03-01` — role-permission allow/deny matrix (`security`, currently `not_run`).
+- `TC-002-03-02` — self-approval rejection and second-party approval (`integration`, currently `not_run`).
+
+Canonical acceptance criteria:
+
+- `AC-BL-002-03-01` — permissions are tenant-scoped and deny by default.
+- `AC-BL-002-03-02` — a proposer cannot approve their own governed request; an authorized second actor can approve it atomically.
+- Requirement-derived criteria are listed on `US-BL-002-03` in `normalized-backlog.json`; do not copy or rename their IDs.
+
+Linked master requirements:
+
+- Role catalogue: `MSR-061-7A36036152`, `MSR-061-1B4B96A6E3`, `MSR-061-AD99726B55`, `MSR-061-10DF979CB3`, `MSR-061-FC23E1A2AC`, `MSR-061-5B5141CF8A`, `MSR-061-090E641078`, `MSR-061-63FDAF8F3E`, `MSR-061-C9828F9E74`, `MSR-061-5C468F3F8B`, `MSR-061-A7460DEF70`, `MSR-061-3232EC982D`.
+- Tenant RBAC plus optional ABAC constraints: `MSR-061-2B41953787`.
+- Configurable maker-checker and governed examples: `MSR-062-8989FE4287`, `MSR-062-BC82DFEC91`, `MSR-062-2876276E95`, `MSR-062-B080DE07A3`, `MSR-062-58A24733E1`.
+- Pricing activation authorization: `MSR-100-C2940C4995`.
+
+Implement a bounded, honest skeleton rather than pretending the entire 19-requirement story is complete:
+
+1. Define a platform permission catalogue using the canonical permission strings already documented in `docs/pre-implementation/13-api-specification.md` section 4. Include the tenant-security permissions needed to manage roles/assignments. Do not invent broad wildcard grants.
+2. Define tenant-scoped role definitions, immutable permission bindings and role assignments. The evaluator must:
+   - derive tenant and actor exclusively from a resolver-issued `TenantContext`;
+   - deny when no active assignment grants the exact permission;
+   - deny cross-tenant assignments;
+   - apply revocation on the next evaluation according to the current no-cache/session policy;
+   - layer optional deterministic ABAC constraints only to narrow a grant;
+   - fail closed when a constraint evaluator errors or an attribute is absent.
+3. Provide the concrete RBAC authorizer needed by tenant-scoped commands. Keep platform-scoped tenant provisioning authorization separate; a tenant role must never imply platform-global permission.
+4. Define a pure maker-checker policy and approval-request state model covering `PENDING`, `APPROVED`, `REJECTED`, `EXPIRED` and `CANCELLED`, immutable decisions, version checks and terminal-state rejection.
+5. Enforce step-up MFA for human approval, exact tenant/action/resource/version matching, required approver permission and separation of duties. A workload identity must not perform a human approval.
+6. Add tests that fail without the implementation: allow/deny matrix, exact-permission behavior, cross-tenant denial, revoked assignment, ABAC narrowing/fail-closed, self-approval denial, unauthorized approver, valid second-party approval, stale version, expired/rejected request reuse and tenant mismatch.
+7. Register any new problem codes and update the problem-catalog golden test. Import every new test file from `tests/all.test.ts`.
+8. Update `README.md` and `implementation-roadmap-data.js` conservatively. Mark a roadmap test `passing` only if the whole named behavior is actually demonstrated. A pure aggregate plus in-memory test double normally justifies `partial`, not completed persistence/integration.
+9. Run `npm.cmd run backlog:generate` after the roadmap source changes, then run `npm.cmd run check`.
+
+Important ownership constraint: canonical domain sources assign tenant roles and `ApprovalPolicy` to Identity & Tenant, while immutable `ApprovalRequest` evidence belongs to Audit & Governance. Do not add `approval_request` to the identity-tenant table manifest merely for convenience. For a persistence-free skeleton, keep the approval store behind a boundary port and record real Audit & Governance persistence/atomic command integration as remaining. If creating a new module, give it an explicit `module.json`, correct table ownership, and communicate only through published contracts/ports.
+
+The master specification names 12 personas but does not itself define a complete permission matrix for all 12. Use only grants supported by canonical detailed sources, leave unspecified grants denied, and keep those requirement-derived criteria partial unless a complete reviewed matrix is actually established. Do not turn illustrative role examples into unreviewed product policy.
 
 ## 9. Open decisions and hard stops
 
@@ -214,6 +231,8 @@ Resolved:
 
 Still requires a proposal and explicit confirmation at the relevant gate:
 
+- PostgreSQL local/CI execution mode: Docker Compose, testcontainers, or hosted instance. This blocks real persistence/RLS evidence for P0-001 and P0-003.
+- Production OIDC/JWKS, SAML certificate and workload signed-token/mTLS adapter choices. These block completion of P0-004 but do not block P0-005 domain/application work with ports and test doubles.
 - SPIKE-02 decimal/money library and boundary representation. JavaScript `number` is prohibited for monetary values.
 - SPIKE-03 primary-key scheme: ULID versus UUIDv7.
 - SPIKE-05 usage throughput, burst and retention profile.
@@ -336,8 +355,8 @@ Begin by:
 1. Reading the mandatory files.
 2. Running `npm.cmd run check`.
 3. Comparing the live repository results with the counts and statuses in this handover.
-4. Inspecting `US-BL-001-05`, its linked requirements/acceptance criteria/tests, and the existing problem model.
-5. Implementing the next safe `P0-002` tranche with tests.
+4. Inspecting `US-BL-002-03`, all 19 linked requirements, all 21 acceptance criteria, both canonical test records, and the existing deny-by-default `PlatformAuthorizer` port.
+5. Implementing the bounded P0-005 RBAC and maker-checker tranche described in section 8, with tests.
 6. Updating durable status/evidence without modifying generated artifacts by hand.
 7. Running the complete validation gate and giving an evidence-based handoff report.
 

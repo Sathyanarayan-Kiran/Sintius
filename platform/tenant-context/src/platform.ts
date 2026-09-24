@@ -11,6 +11,10 @@ export interface PlatformCommandContext {
   readonly principalKind: AuthenticatedPrincipal["kind"];
   readonly correlationId: string;
   readonly causationId?: string;
+  readonly assurance: AuthenticatedPrincipal["assurance"];
+  readonly credentialId?: string;
+  readonly audiences: readonly string[];
+  readonly scopes: readonly string[];
 }
 
 const issuedPlatformContexts = new WeakSet<object>();
@@ -31,7 +35,11 @@ export function resolvePlatformCommandContext(input: ResolvePlatformCommandConte
   const context: PlatformCommandContext = {
     actorId: toActorId(input.principal.actorId),
     principalKind: input.principal.kind,
+    assurance: input.principal.assurance,
     correlationId: input.correlationId,
+    ...(input.principal.credentialId === undefined ? {} : { credentialId: input.principal.credentialId }),
+    audiences: Object.freeze([...(input.principal.audiences ?? [])]),
+    scopes: Object.freeze([...(input.principal.scopes ?? [])]),
     ...(input.causationId === undefined ? {} : { causationId: input.causationId }),
   };
   const frozen = Object.freeze(context);

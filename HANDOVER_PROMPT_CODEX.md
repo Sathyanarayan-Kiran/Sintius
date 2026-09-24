@@ -23,7 +23,7 @@ Key non-negotiables from that file:
 - `npm run check` = check:architecture, check:roadmap, check:requirements, test.
 - Code style: ESM, zero runtime dependencies, erasable TypeScript only (no enums, namespaces or parameter properties; use `import type`, `#private` fields), tests run natively with `node --test tests/all.test.ts`. Every new test file must be imported from `tests/all.test.ts`.
 - Modules may not import other modules' internals; `tools/architecture-lint` validates each `module.json` (ownedTables, publishedEvents, allowedModuleDependencies).
-- Baseline at handover: `npm run check` passes, 51 of 51 tests. Run it before editing and confirm.
+- Baseline at handover: `npm run check` passes, 79 of 79 tests. Run it before editing and confirm.
 
 ## 3. What exists now (verify by reading, do not trust this list blindly)
 
@@ -31,6 +31,8 @@ Key non-negotiables from that file:
 - `platform/tenant-context` (P0-001 / US-BL-001-01): trusted tenant context via AsyncLocalStorage, only resolver-issued contexts accepted, nested tenant/actor switching rejected, tenant identity in command input rejected (fail closed), tenant-scoped cache keys, tenant-bound transaction port, and `PlatformCommandContext` for platform-scoped commands.
 - `platform/event-envelope`: CloudEvents-style envelope conforming to `docs/pre-implementation/contracts/events/envelope.schema.json`; tenant, actor and correlation come only from trusted scope; payload may not restate tenant identity. Event id is a working default `evt_<uuid>` pending SPIKE-03.
 - `modules/identity-tenant` (P0-003 / US-BL-002-01): pure tenant aggregate (`domain/tenant.ts`) plus application layer (`application/ports.ts`, `application/tenant-commands.ts`). Handlers: provision, activate, suspend, reactivate, close. Authorize first, then one unit of work writing tenant, default administrator role, initial administrator membership, audit record and outbox envelope.
+- `modules/identity-tenant` authentication slice (P0-004 / US-BL-002-02 and US-BL-002-04): provider-neutral verifier, policy and revocation ports plus interactive OIDC/SAML and workload authentication policy. It enforces mechanism, issuer, audience, expiry/not-before, MFA, revocation, tenant binding, workload operation scopes and separation from interactive sessions. Authenticated credential/audience/scope data propagates into tenant and platform contexts, and nested context replacement cannot change it. Tests use a verifier test double; no production cryptographic/provider adapter or durable session store exists.
+- P0-005 / US-BL-002-03, split by ownership. `modules/identity-tenant`: `domain/authorization.ts` (frozen permission catalog, deny-by-default `effectivePermissions`, fail-closed ABAC `constraintsSatisfied`), `application/authorization.ts` (`createTenantAuthorizer` with live role lookup so revocation applies on the next command; workload principals need explicit scopes; ABAC only narrows; `createRoleAdministration` requiring `tenant:role:assign`, no self-change), ports in `authorization-ports.ts`. `modules/audit-governance` (owns `approval_request`; `approval_policy` stays with identity-tenant and is read through a port): `domain/approval.ts` (PENDING/APPROVED/REJECTED/EXPIRED/CANCELLED, separation of duties, distinct approvers, exact action/resource/version match, version CAS, cancel, expire) and `application/approval-commands.ts` (propose/decide/cancel; deciding needs an interactive principal with MFA; atomic decision + audit + outbox). `TenantContext` and `PlatformCommandContext` now carry `assurance`. Test doubles: `identity-tenant/tests/in-memory-security.ts`, `audit-governance/tests/in-memory-approvals.ts`.
 - `modules/identity-tenant/tests/in-memory-persistence.ts` is a TEST DOUBLE. It is not evidence of PostgreSQL atomicity.
 
 ## 4. Durable status at handover (in `docs/implementation/implementation-roadmap-data.js`)
@@ -38,18 +40,28 @@ Key non-negotiables from that file:
 - US-BL-001-05: tests TC-001-05-01/02 passing, progress 80.
 - US-BL-001-01: progress 85; TC-001-01-03 (trusted tenant reaches a real transaction) is `not_run`.
 - US-BL-002-01: progress 60; TC-002-01-03 (atomic tenant/default-role/admin persistence) is `not_run`.
+- US-BL-002-02: progress 65; both roadmap tests are `partial`. Provider-neutral claim enforcement is tested, but real OIDC/SAML signature/key discovery, durable sessions and security audit facts remain.
+- US-BL-002-04: progress 65; workload audience/scope enforcement is `partial`, while workload/interactive identity separation is `passing`. A production signed-token or mTLS adapter, issuance and rotation remain.
+- The authentication slice traces through US-MSR-080-01 to `MSR-080-3B6F4B3FE4` (OIDC/OAuth2), `MSR-080-A555453F8D` (SAML) and `MSR-080-477F636C27` (MFA). Do not mark all of US-MSR-080-01 implemented: it also contains authorization, encryption, key management, secret-management and rate-limiting requirements outside this tranche.
 - Implementation evidence overall: 0 of 1,335 requirements. No durable evidence overlay exists yet for source-derived stories; create one before claiming any of them implemented.
+
+- US-BL-002-03: progress 50; both roadmap tests `partial` (in-memory doubles only; the allow/deny matrix covers a fixture, not a reviewed 12-persona matrix). Remaining: PostgreSQL adapters and RLS, ingress permission declaration, ApprovalPolicy management, approval expiry sweeper, platform-role scoping and replacing the `PlatformAuthorizer` port, metrics.
+
+### Known gaps found in review
+
+- `resolveTenantContext` / `resolvePlatformCommandContext` accept any structurally valid `AuthenticatedPrincipal`; nothing proves it came from `createAuthenticator`. Consider issuing principals via a WeakSet-backed constructor (as done for contexts) before wiring HTTP ingress.
+- `AuthenticatedPrincipal.expiresAt` is carried but not enforced at context resolution.
 
 ## 5. Recommended next tranche
 
 Do these in order, one bounded tranche at a time, and stop to report after each.
 
 1. **PostgreSQL adapter for identity-tenant (finishes TC-001-01-03 and TC-002-01-03).** Blocked on one decision: how Postgres runs locally and in CI (Docker Compose, testcontainers, or a hosted instance). Propose an option with trade-offs and ask the Product Owner; do not pick silently. Once decided: implement `TenantPersistence`/`TenantUnitOfWork` against real PostgreSQL, the tables owned by identity-tenant (`tenant`, `tenant_identity_provider`, `tenant_role`, `tenant_role_assignment`), migrations, and an integration test proving atomic commit and rollback plus tenant-bound transaction binding. Only then mark those two tests `passing`.
-2. **P0-004** authentication and workload identity (issue and verify principals feeding `resolveTenantContext` / `resolvePlatformCommandContext`).
-3. **P0-005** RBAC and maker-checker; replaces the deny-by-default `PlatformAuthorizer` port and defines the permission catalog for the default `tenant_administrator` role.
-4. **P0-006** idempotency, **P0-007** outbox relay, **P0-008** audit, **P0-009** row-level security, **P0-010** proof command. Specs are in `docs/implementation/phase-0-backlog.md`.
+2. **Finish P0-004 production adapters.** This requires explicit provider/runtime choices for OIDC/JWKS, SAML certificates and workload signed-token or mTLS verification; do not silently select vendors or libraries. Add durable session/revocation persistence and authentication audit facts before changing the two partial roadmap tests to passing.
+3. ~~P0-005~~ done at unit level; production adapters ride with item 1.
+4. **P0-006** idempotency (next decision-independent tranche), **P0-007** outbox relay, **P0-008** audit, **P0-009** row-level security, **P0-010** proof command. Specs are in `docs/implementation/phase-0-backlog.md`.
 
-If the PostgreSQL decision is not yet made, start with P0-004 and record the blocker.
+If the PostgreSQL and production identity-provider decisions are not yet made, start with P0-006 and record both blockers.
 
 ## 6. Definition of done for any tranche
 

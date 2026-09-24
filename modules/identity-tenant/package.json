@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./domain/tenant.ts",
-    "./application": "./application/tenant-commands.ts"
+    "./application": "./application/tenant-commands.ts",
+    "./authentication": "./application/authentication.ts",
+    "./authorization": "./application/authorization.ts"
   }
 }

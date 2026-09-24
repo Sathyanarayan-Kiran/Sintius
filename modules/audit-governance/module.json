@@ -1,0 +1,6 @@
+{
+  "name": "audit-governance",
+  "ownedTables": ["approval_request"],
+  "publishedEvents": ["approval.requested.v1", "approval.decided.v1", "approval.cancelled.v1"],
+  "allowedModuleDependencies": []
+}
