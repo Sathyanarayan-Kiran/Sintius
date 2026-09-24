@@ -6,3 +6,6 @@ dist/
 !.env.example
 contracts/generated/
 *.log
+
+# Test reports written by tools/test/run-suite.mjs when SINTIUS_TEST_REPORT_DIR is set
+reports/

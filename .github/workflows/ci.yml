@@ -1,0 +1,70 @@
+name: CI
+
+# Decision D13: the full release gate runs on every pull request and every push to master.
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Release gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Same image as compose.yaml. Trust auth is acceptable only because this database is
+        # ephemeral, bound to the job's loopback port and holds synthetic test data.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: sintius
+          POSTGRES_USER: sintius_admin
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U sintius_admin -d sintius"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      SINTIUS_TEST_REPORT_DIR: reports
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Type check
+        run: npm run typecheck
+      - name: Architecture and money guardrails
+        run: npm run check:architecture
+      - name: Roadmap
+        run: npm run check:roadmap
+      - name: Requirement traceability
+        run: npm run check:requirements
+      - name: Unit tests
+        run: npm test
+      - name: PostgreSQL migrations
+        run: npm run db:migrate
+      - name: PostgreSQL integration tests
+        run: npm run test:postgres
+      - name: Verify implementation evidence against this run
+        run: npm run check:evidence
+      - name: Upload release-gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-evidence-${{ github.sha }}
+          path: |
+            reports/
+            docs/implementation/requirement-coverage.json
+          retention-days: 90
