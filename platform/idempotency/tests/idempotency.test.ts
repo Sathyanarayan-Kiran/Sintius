@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlatformProblem } from "../../problem-model/src/index.ts";
+import { PlatformProblem, problem } from "../../problem-model/src/index.ts";
 import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import { resolveTenantContext, runWithTenantContext, tenantId, type TenantId } from "../../tenant-context/src/index.ts";
 import {
@@ -200,7 +200,7 @@ test("replay does not bypass current authorization", async () => {
   await runWithTenantContext(contextFor(A), () => execute(request(), allow, work()));
   const before = persistence.transactionsStarted;
   const deny = async () => {
-    throw new PlatformProblem({ code: "permission_denied", status: 403, title: "Permission denied", detail: "denied" });
+    throw problem({ code: "permission_denied", detail: "denied" });
   };
   await runWithTenantContext(contextFor(A, "revoked_user"), async () => {
     await assert.rejects(execute(request(), deny, work()), code("permission_denied"));

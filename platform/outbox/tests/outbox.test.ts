@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildEventEnvelopeFor, type EventEnvelope } from "../../event-envelope/src/index.ts";
-import { PlatformProblem } from "../../problem-model/src/index.ts";
+import { PlatformProblem, problem } from "../../problem-model/src/index.ts";
 import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import { tenantId } from "../../tenant-context/src/index.ts";
 import { createAuditPolicy, createAuditRecorder, verifyAuditEvent, type AuditEvent } from "../../audit/src/index.ts";
@@ -366,7 +366,7 @@ test("dead-letter resolution is authorized first, needs a reason, and only appli
   let authorized = 0;
   const { operations, context, auditRows, control } = deadLetterKit(outbox, iso, async (action) => {
     authorized += 1;
-    if (action === "skip") throw new PlatformProblem({ code: "permission_denied", status: 403, title: "Permission denied", detail: "denied" });
+    if (action === "skip") throw problem({ code: "permission_denied", detail: "denied" });
   });
 
   await assert.rejects(operations(context, { entryId: "out_1", action: "skip", reason: "x" }), code("permission_denied"));

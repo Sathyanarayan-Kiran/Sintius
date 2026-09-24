@@ -25,9 +25,16 @@
     "requirements:generate": "node tools/requirements/extract-master-requirements.mjs",
     "backlog:generate": "node tools/backlog/normalize-master-backlog.mjs",
     "check:requirements": "node tools/requirements/check-coverage.mjs",
-    "check": "npm run check:architecture && npm run check:roadmap && npm run check:requirements && npm test && npm run check:postgres"
+    "check": "npm run typecheck && npm run check:architecture && npm run check:roadmap && npm run check:requirements && npm test && npm run check:postgres",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "fastify": "5.12.5",
     "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "@types/pg": "8.23.1",
+    "typescript": "7.0.2"
   }
 }

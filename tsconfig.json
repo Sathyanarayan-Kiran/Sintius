@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "erasableSyntaxOnly": true,
+    "rewriteRelativeImportExtensions": false,
+    "types": ["node"],
+    "skipLibCheck": true
+  },
+  "include": ["apps/**/*.ts", "modules/**/*.ts", "platform/**/*.ts", "tools/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules"]
+}

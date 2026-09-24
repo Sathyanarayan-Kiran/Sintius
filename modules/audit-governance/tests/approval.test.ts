@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlatformProblem } from "../../../platform/problem-model/src/index.ts";
+import { PlatformProblem, problem } from "../../../platform/problem-model/src/index.ts";
 import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import { actorId, currentTenantContext, resolveTenantContext, runWithTenantContext, tenantId, type TenantId } from "../../../platform/tenant-context/src/index.ts";
 import { createAuditPolicy, createAuditRecorder } from "../../../platform/audit/src/index.ts";
@@ -34,7 +34,7 @@ function contextFor(
 ) {
   const kind = options.kind ?? "interactive";
   return resolveTenantContext({
-    principal: testPrincipal([tenant], { actor, kind, assurance: options.assurance }),
+    principal: testPrincipal([tenant], { actor, kind, ...(options.assurance === undefined ? {} : { assurance: options.assurance }) }),
     selectedTenantId: tenant,
     tenantState: "ACTIVE",
     correlationId: "corr_appr_1",
@@ -50,7 +50,7 @@ function authorizerWith(grants: Record<string, readonly string[]>): ApprovalAuth
       calls.push(permission);
       const context = currentTenantContext();
       const actor = grants[`${context.tenantId}:${context.actorId}`] ?? [];
-      if (!actor.includes(permission)) throw new PlatformProblem({ code: "permission_denied", status: 403, title: "Permission denied", detail: "denied" });
+      if (!actor.includes(permission)) throw problem({ code: "permission_denied", detail: "denied" });
     },
   };
 }
