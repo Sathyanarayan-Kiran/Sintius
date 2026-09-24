@@ -2,10 +2,18 @@ import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import pg from "pg";
 import { createAuditPolicy, createAuditRecorder } from "../../../platform/audit/src/index.ts";
+import { createIdempotentExecutor, type StoredResponse } from "../../../platform/idempotency/src/index.ts";
 import { PlatformProblem } from "../../../platform/problem-model/src/index.ts";
-import { resolvePlatformCommandContext } from "../../../platform/tenant-context/src/index.ts";
+import {
+  resolvePlatformCommandContext,
+  resolveTenantContext,
+  runWithTenantContext,
+  tenantId,
+  type TenantId,
+} from "../../../platform/tenant-context/src/index.ts";
 import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import { TENANT_AUDIT_FIELDS, createTenantCommands } from "../application/tenant-commands.ts";
+import type { TenantUnitOfWork } from "../application/ports.ts";
 import { PostgresTenantPersistence } from "../infrastructure/postgres/tenant-persistence.ts";
 import { AllowListAuthorizer } from "./in-memory-persistence.ts";
 
@@ -51,8 +59,8 @@ before(async () => {
 
 beforeEach(async () => {
   await persistence?.close();
-  persistence = new PostgresTenantPersistence({ connectionString: appUrl, maxConnections: 5 });
-  await admin.query("TRUNCATE outbox_event, audit_event, approval_policy, tenant_role_assignment, tenant_role, tenant_identity_provider, tenant RESTART IDENTITY CASCADE");
+  persistence = new PostgresTenantPersistence({ connectionString: appUrl, maxConnections: 12 });
+  await admin.query("TRUNCATE idempotency_record, outbox_event, audit_event, approval_policy, tenant_role_assignment, tenant_role, tenant_identity_provider, tenant RESTART IDENTITY CASCADE");
 });
 
 after(async () => {
@@ -145,4 +153,129 @@ test("TC-002-01-03 concurrent lifecycle updates use database compare-and-set", a
   assert.deepEqual(row.rows[0], { state: "SUSPENDED", row_version: "3" });
   assert.equal(await count("audit_event", "tenant_pg_race"), 3);
   assert.equal(await count("outbox_event", "tenant_pg_race"), 3);
+});
+
+function tenantContext(id: TenantId, actor = "member_1") {
+  return resolveTenantContext({
+    principal: testPrincipal([id], { actor }),
+    selectedTenantId: id,
+    tenantState: "ACTIVE",
+    correlationId: `corr_idem_pg_${++sequence}`,
+  });
+}
+
+async function activeTenant(id: string): Promise<TenantId> {
+  const typed = tenantId(id);
+  const service = commands();
+  await service.provisionTenant(context(), { tenantId: id, displayName: id, initialAdministratorActorId: `admin_${id}` });
+  await service.activateTenant(context(), { tenantId: id, expectedVersion: 1 });
+  return typed;
+}
+
+const IDEMPOTENCY_KEY = "8f14e45f-ceea-467f-a0e6-1c2d3e4f5a6b";
+
+function idempotentUpdate(id: TenantId, runs: { value: number }, delayMilliseconds = 0) {
+  return async (unitOfWork: TenantUnitOfWork): Promise<StoredResponse> => {
+    runs.value += 1;
+    if (delayMilliseconds > 0) await new Promise((resolve) => setTimeout(resolve, delayMilliseconds));
+    const current = await unitOfWork.tenants.findById(id);
+    assert.ok(current);
+    await unitOfWork.tenants.update(
+      Object.freeze({ ...current, displayName: `updated-${runs.value}`, version: current.version + 1, updatedAt: new Date(NOW.valueOf() + 1_000).toISOString() }),
+      current.version,
+    );
+    return { status: 200, body: { version: current.version + 1, display_name: `updated-${runs.value}` } };
+  };
+}
+
+test("TC-001-02-01 PostgreSQL replays one stored response and commits the protected effect once", async () => {
+  const id = await activeTenant("tenant_idem_replay");
+  const execute = createIdempotentExecutor({ persistence, clock: () => NOW });
+  const runs = { value: 0 };
+  const request = { scope: "tenant.update_profile", key: IDEMPOTENCY_KEY, payload: { display_name: "updated" } } as const;
+  const trusted = tenantContext(id);
+
+  const first = await runWithTenantContext(trusted, () => execute(request, async () => {}, idempotentUpdate(id, runs)));
+  const replay = await runWithTenantContext(trusted, () => execute(request, async () => {}, idempotentUpdate(id, runs)));
+
+  assert.equal(first.replayed, false);
+  assert.equal(replay.replayed, true);
+  assert.deepEqual(replay.response, first.response);
+  assert.equal(runs.value, 1);
+  assert.equal(await count("idempotency_record", id), 1);
+  const row = await admin.query("SELECT display_name, row_version FROM tenant WHERE tenant_id = $1", [id]);
+  assert.deepEqual(row.rows[0], { display_name: "updated-1", row_version: "3" });
+
+  await runWithTenantContext(trusted, async () => {
+    await assert.rejects(
+      execute({ ...request, payload: { display_name: "different" } }, async () => {}, idempotentUpdate(id, runs)),
+      (error: unknown) => error instanceof PlatformProblem && error.problem.code === "idempotency_key_reused_with_different_payload",
+    );
+  });
+  assert.equal(runs.value, 1);
+});
+
+test("TC-001-02-02 PostgreSQL unique-key serialization permits one effect under a concurrent retry race", async () => {
+  const id = await activeTenant("tenant_idem_race");
+  const execute = createIdempotentExecutor({ persistence, clock: () => NOW });
+  const runs = { value: 0 };
+  const request = { scope: "tenant.update_profile", key: IDEMPOTENCY_KEY, payload: { display_name: "race" } } as const;
+  const trusted = tenantContext(id);
+
+  const results = await Promise.all(
+    Array.from({ length: 12 }, () =>
+      runWithTenantContext(trusted, () => execute(request, async () => {}, idempotentUpdate(id, runs, 20))),
+    ),
+  );
+
+  assert.equal(runs.value, 1);
+  assert.equal(results.filter((result) => !result.replayed).length, 1);
+  assert.equal(results.filter((result) => result.replayed).length, 11);
+  for (const result of results) assert.deepEqual(result.response, results[0]!.response);
+  assert.equal(await count("idempotency_record", id), 1);
+  const row = await admin.query("SELECT row_version FROM tenant WHERE tenant_id = $1", [id]);
+  assert.equal(row.rows[0].row_version, "3");
+});
+
+test("TC-001-02-03 PostgreSQL RLS isolates the same idempotency key between tenants", async () => {
+  const [a, b] = await Promise.all([activeTenant("tenant_idem_A"), activeTenant("tenant_idem_B")]);
+  const execute = createIdempotentExecutor({ persistence, clock: () => NOW });
+  const runsA = { value: 0 };
+  const runsB = { value: 0 };
+  const request = { scope: "tenant.update_profile", key: IDEMPOTENCY_KEY, payload: { display_name: "same" } } as const;
+
+  const [resultA, resultB] = await Promise.all([
+    runWithTenantContext(tenantContext(a, "member_A"), () => execute(request, async () => {}, idempotentUpdate(a, runsA))),
+    runWithTenantContext(tenantContext(b, "member_B"), () => execute(request, async () => {}, idempotentUpdate(b, runsB))),
+  ]);
+
+  assert.equal(resultA.replayed, false);
+  assert.equal(resultB.replayed, false);
+  assert.equal(runsA.value, 1);
+  assert.equal(runsB.value, 1);
+  assert.equal(await count("idempotency_record", a), 1);
+  assert.equal(await count("idempotency_record", b), 1);
+});
+
+test("PostgreSQL rolls back the idempotency claim when the protected effect fails", async () => {
+  const id = await activeTenant("tenant_idem_rollback");
+  const execute = createIdempotentExecutor({ persistence, clock: () => NOW });
+  const trusted = tenantContext(id);
+  const request = { scope: "tenant.update_profile", key: IDEMPOTENCY_KEY, payload: { display_name: "rollback" } } as const;
+
+  await runWithTenantContext(trusted, async () => {
+    await assert.rejects(
+      execute(request, async () => {}, async (unitOfWork) => {
+        const current = await unitOfWork.tenants.findById(id);
+        assert.ok(current);
+        await unitOfWork.tenants.update({ ...current, displayName: "must-rollback", version: current.version + 1 }, current.version);
+        throw new Error("injected protected-effect failure");
+      }),
+      /injected protected-effect failure/,
+    );
+  });
+
+  assert.equal(await count("idempotency_record", id), 0);
+  const row = await admin.query("SELECT display_name, row_version FROM tenant WHERE tenant_id = $1", [id]);
+  assert.deepEqual(row.rows[0], { display_name: "tenant_idem_rollback", row_version: "2" });
 });

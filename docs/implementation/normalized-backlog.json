@@ -104,8 +104,8 @@
             "BL-001-02"
           ],
           "implementation": "in_progress",
-          "progress": 50,
-          "notes": "Transaction-aware idempotent executor, canonical request hashing (deterministic SHA-256, rejects non-JSON), store port with atomic-claim contract, mandatory validated Idempotency-Key, authorization before lookup so replay cannot bypass it, 409 on payload reuse, request_in_progress handling, seven-day default retention and a purge port are implemented and unit-tested against an in-memory double that models the store contract. All three tests stay partial: no PostgreSQL unique-index adapter exists, so real concurrent-race and cross-tenant isolation are unproven. Remaining: PostgreSQL adapter and idempotency_record migration, HTTP ingress (Idempotency-Key header, Retry-After, ETag), storing deterministic failures (failed-final), per-tenant retention policy source, cleanup job, replay/conflict/pending-age metrics.",
+          "progress": 75,
+          "notes": "Transaction-aware executor, deterministic SHA-256 canonical hashing, authorization before lookup, payload-conflict 409, mandatory validated key, seven-day default retention and purge port are implemented. The real PostgreSQL idempotency_record adapter uses the tenant/scope/key primary key as its serialization point and shares the protected command transaction. Integration tests prove exact replay with one durable effect, claim rollback on effect failure, a 12-request concurrent duplicate race with one winner, payload conflict, and same-key tenant isolation under forced RLS. Remaining: wrap concrete tenant lifecycle entry points, HTTP ingress (Idempotency-Key, Retry-After, ETag), deterministic failed-final responses, per-tenant retention source and PostgreSQL cleanup job, and replay/conflict/pending-age metrics.",
           "acceptance": [
             "An identical retry with the same tenant, command, key and payload returns the original response without another effect.",
             "Reusing the key with a different canonical payload returns a 409 conflict.",
@@ -118,19 +118,19 @@
               "id": "TC-001-02-01",
               "name": "Exact replay returns one response and one effect",
               "type": "contract",
-              "status": "partial"
+              "status": "passing"
             },
             {
               "id": "TC-001-02-02",
               "name": "Concurrent duplicate race produces one effect",
               "type": "concurrency",
-              "status": "partial"
+              "status": "passing"
             },
             {
               "id": "TC-001-02-03",
               "name": "Same key remains isolated between tenants",
               "type": "security",
-              "status": "partial"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E001",
@@ -257,8 +257,8 @@
             "BL-001-04"
           ],
           "implementation": "in_progress",
-          "progress": 25,
-          "notes": "The first PostgreSQL migration gives all seven current foundation tables a tenant_id, enables and forces RLS, creates a policy bound to transaction-local app.tenant_id and uses a NOBYPASSRLS application role. Identity-tenant repository queries also include explicit tenant filters. Integration evidence proves no-context reads return no rows and a cross-tenant insert is rejected. Both tests remain partial until every tenant-owned table and repository is migrated and the full tenant A/B select/insert/update/delete matrix is automated.",
+          "progress": 30,
+          "notes": "All eight current PostgreSQL foundation tables have tenant_id, enabled and forced RLS, policies bound to transaction-local app.tenant_id and a NOBYPASSRLS application role. Identity-tenant and idempotency queries also include explicit tenant filters. Integration evidence proves no-context reads return no tenant rows, a cross-tenant insert is rejected, and the same idempotency key is isolated across two tenants. Both tests remain partial until every future tenant-owned table/repository is migrated and the complete A/B select/insert/update/delete matrix is automated.",
           "acceptance": [
             "Every tenant-owned table has forced RLS and every repository requires trusted tenant context.",
             "Tenant A cannot read, insert, update or delete tenant B data even if an application filter is bypassed.",

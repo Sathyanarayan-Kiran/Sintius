@@ -1,4 +1,5 @@
 import type { AuditWriter } from "../../../platform/audit/src/index.ts";
+import type { IdempotencyStore } from "../../../platform/idempotency/src/index.ts";
 import type { OutboxWriter } from "../../../platform/outbox/src/index.ts";
 import type { ActorId, PlatformCommandContext, TenantId } from "../../../platform/tenant-context/src/index.ts";
 import type { TenantSnapshot } from "../domain/tenant.ts";
@@ -48,6 +49,7 @@ export interface TenantMembershipRepository {
 
 /** Repositories bound to one database transaction. */
 export interface TenantUnitOfWork {
+  readonly idempotency: IdempotencyStore;
   readonly tenants: TenantRepository;
   readonly roles: TenantRoleRepository;
   readonly memberships: TenantMembershipRepository;

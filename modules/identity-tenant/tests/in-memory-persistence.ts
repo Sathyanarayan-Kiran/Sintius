@@ -48,6 +48,14 @@ export class InMemoryTenantPersistence implements TenantPersistence {
       if (this.failAt === point) throw new Error(`injected ${point} failure`);
     };
     const unitOfWork: TenantUnitOfWork = {
+      idempotency: {
+        claim: async () => {
+          throw new Error("The tenant command unit tests do not exercise idempotency directly.");
+        },
+        complete: async () => {
+          throw new Error("The tenant command unit tests do not exercise idempotency directly.");
+        },
+      },
       tenants: {
         insert: async (tenant) => {
           guard();

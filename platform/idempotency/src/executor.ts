@@ -69,6 +69,7 @@ export function createIdempotentExecutor<U extends { readonly idempotency: Idemp
     const now = dependencies.clock();
     const expiresAt = new Date(now.valueOf() + retentionSeconds * 1000).toISOString();
     const transactionScope = {
+      tenantId: context.tenantId,
       correlationId: correlation_id,
       ...(context.causationId === undefined ? {} : { causationId: context.causationId }),
     };

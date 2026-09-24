@@ -61,7 +61,7 @@ export interface IdempotencyMaintenance {
 export interface IdempotencyPersistence<U extends { readonly idempotency: IdempotencyStore }> {
   /** Every write in `work`, including the idempotency claim and completion, commits together or none does. */
   runInTransaction<T>(
-    scope: { readonly correlationId: string; readonly causationId?: string },
+    scope: { readonly tenantId: TenantId; readonly correlationId: string; readonly causationId?: string },
     work: (unitOfWork: U) => Promise<T>,
   ): Promise<T>;
 }

@@ -33,7 +33,7 @@ Do not restart discovery or regenerate a smaller backlog.
 - GitHub push protection scans for secret patterns. Do not put literal secret-shaped strings (for example `sk_test_...`) in source or tests, even fake or documented ones; build them at runtime (`"sk_" + "test_..."`). History was rewritten once to remove one; a local branch `backup-before-secret-fix` still holds the flagged string and must never be pushed.
 - Git prints many "LF will be replaced by CRLF" warnings on this machine; they are harmless.
 - Local database: Docker Compose runs PostgreSQL 17 on `127.0.0.1:54329`; `db:up` waits for health, `db:migrate` applies checksum-protected forward-only migrations, and `db:down` retains the named volume. Compose trust authentication is strictly local-development configuration.
-- Baseline: `npm run check` passes with **119 unit tests plus 4 PostgreSQL integration tests (123 total)**. Run it before editing and confirm.
+- Baseline: `npm run check` passes with **119 unit tests plus 8 PostgreSQL integration tests (127 total)**. Run it before editing and confirm.
 
 ## 3. What exists (verify by reading; do not trust this list blindly)
 
@@ -49,7 +49,7 @@ Trusted principal and tenant context boundaries: authentication issues WeakSet-b
 CloudEvents-style envelope conforming to `docs/pre-implementation/contracts/events/envelope.schema.json`. Tenant, actor, correlation and causation come only from a trusted `EventScope`; payload may not restate tenant identity. Event id default `evt_<uuid>` pending SPIKE-03.
 
 ### platform/idempotency (P0-006 / US-BL-001-02)
-Deterministic canonical hashing, `IdempotencyStore` atomic-claim contract, and `createIdempotentExecutor`: validates key (16 to 128 URL-safe chars) and scope, rejects tenant identity in payload, **authorizes before any lookup**, claim then work then complete in one transaction, replay returns the stored response, different payload gives 409, in-flight gives `request_in_progress`, default retention 7 days. Module unit-of-work types must expose `idempotency: IdempotencyStore`. **The tenant lifecycle commands are not yet wrapped in it.**
+Deterministic canonical hashing, `IdempotencyStore` atomic-claim contract, and `createIdempotentExecutor`: validates key (16 to 128 URL-safe chars) and scope, rejects tenant identity in payload, **authorizes before any lookup**, claim then work then complete in one transaction, replay returns the stored response, different payload gives 409, in-flight gives `request_in_progress`, default retention 7 days. Module unit-of-work types expose `idempotency: IdempotencyStore`. The real PostgreSQL store is transaction-bound through identity-tenant persistence; migration 002 adds the forced-RLS table and primary-key serialization. Tests prove exact replay, rollback, payload conflict, tenant isolation and a 12-request concurrency race. **The concrete tenant lifecycle command API is not yet wrapped in the executor.**
 
 ### platform/outbox (P0-007 / US-BL-001-03)
 `OutboxWriter`, `OutboxStore` (lease contract: at most one lease per aggregate stream, head-of-line blocking), `EventPublisher`, `InboxStore`; `createOutboxDispatcher` (ordered delivery, exponential backoff 5s doubling to 15 min, redacted errors, dead-lettering including crash-looping events, lease-loss handling); `createIdempotentConsumer` (dedup per consumer and tenant, rolled back with the handler); `createDeadLetterOperations` (operator requeue or skip).
@@ -72,9 +72,9 @@ Owns `approval_request` (Audit & Governance, per the canonical sources); `approv
 |---|---|---|---|---|
 | US-BL-001-05 (P0-002) | SUB-E001 | 80 | 2 `passing` | HTTP ingress adapter, ingress correlation propagation, metrics, UI copy |
 | US-BL-001-01 (P0-001) | SUB-E001 | 90 | TC-001-01-03 `partial` | PostgreSQL/RLS binding is proven; worker/job context and real cache adapter remain |
-| US-BL-001-02 (P0-006) | SUB-E001 | 50 | 3 `partial` | PostgreSQL unique-index adapter and migration, HTTP header and Retry-After, failed-final storage, retention source, cleanup job, metrics |
+| US-BL-001-02 (P0-006) | SUB-E001 | 75 | 3 `passing` | lifecycle/API wiring, HTTP response headers, failed-final storage, retention source, cleanup job and metrics |
 | US-BL-001-03 (P0-007) | SUB-E001 | 50 | 2 `partial` | outbox table/atomic insert proven; PostgreSQL leasing/inbox adapter, broker, schema validation, runtime, gap detection, metrics and retention remain |
-| US-BL-001-04 (P0-009) | SUB-E001 | 25 | 2 `partial` | seven foundation tables use forced RLS; extend to all tenant tables and automate the complete A/B CRUD matrix |
+| US-BL-001-04 (P0-009) | SUB-E001 | 30 | 2 `partial` | eight foundation tables use forced RLS; extend to all tenant tables and automate the complete A/B CRUD matrix |
 | US-BL-002-01 (P0-003) | SUB-E002 | 85 | 3 `passing` | idempotency wrapper, reviewed platform RBAC, HTTP ingress |
 | US-BL-002-02 (P0-004) | SUB-E002 | 70 | 2 `partial` | real OIDC/SAML signature and key discovery, durable sessions, security audit facts |
 | US-BL-002-04 (P0-004) | SUB-E002 | 70 | 1 `partial`, 1 `passing` | signed-token or mTLS adapter, issuance and rotation |
@@ -98,15 +98,15 @@ Design choices I made that the Product Owner has not confirmed: dead-letter bloc
 Do these in order, one bounded tranche at a time, and stop to report after each.
 
 **A. Decision-independent work**
-1. Wrap the tenant lifecycle commands in `createIdempotentExecutor`; the shared `OutboxWriter` migration is already complete.
+1. Wrap the tenant lifecycle command API in `createIdempotentExecutor`; the shared `OutboxWriter` and PostgreSQL idempotency-store work are complete.
 2. Consumer-side `aggregate_version` gap detection helper for use after a dead-letter skip.
 3. Propose (do not silently add) a type-check step, and propose a permission or role matrix review for the 12 personas.
 4. An HTTP ingress adapter design note for `apps/api` (correlation and causation IDs, `Idempotency-Key`, `Retry-After`, problem+json). Build it only if the Product Owner approves the framework choice; the repo has no web framework yet.
 
 **B. PostgreSQL tranche (Docker Compose decision resolved)**
 1. **Complete for tenant lifecycle:** migration and adapter for identity-tenant, transaction-local tenant binding, forced RLS, repository filters, commit/rollback and CAS concurrency evidence. TC-002-01-03 is `passing`; TC-001-01-03 is conservatively `partial` until the real cache and worker/job paths are integrated.
-2. Next add adapters for idempotency (unique index and a real concurrent-race test), outbox (SKIP LOCKED leasing), audit (no UPDATE or DELETE grant, tested), then approvals.
-3. Extend **P0-009** (`BL-001-04`, `BL-017-03`) across every tenant-owned table and add the full tenant A/B CRUD matrix. Current proof covers the seven tables in the first migration, but the roadmap story is broader.
+2. Idempotency adapter/unique-index race proof is complete. Next add outbox SKIP LOCKED leasing, explicit audit UPDATE/DELETE denial tests, then approval persistence.
+3. Extend **P0-009** (`BL-001-04`, `BL-017-03`) across every tenant-owned table and add the full tenant A/B CRUD matrix. Current proof covers the eight foundation tables, but the roadmap story is broader.
 4. Build **P0-010**, the Phase 0 proof command: establish trusted authenticated context, execute an idempotent mutation twice with one key, and prove one mutation, one audit event and one outbox event committed atomically.
 
 **C. Blocked on identity-provider choices**

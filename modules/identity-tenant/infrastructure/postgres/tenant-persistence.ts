@@ -1,6 +1,7 @@
 import pg from "pg";
 import type { AuditEvent } from "../../../../platform/audit/src/index.ts";
 import type { EventEnvelope } from "../../../../platform/event-envelope/src/index.ts";
+import { createPostgresIdempotencyStore } from "../../../../platform/idempotency/infrastructure/postgres/store.ts";
 import { problem } from "../../../../platform/problem-model/src/index.ts";
 import { tenantId, type TenantId } from "../../../../platform/tenant-context/src/index.ts";
 import type { TenantPersistence, TenantTransactionScope, TenantUnitOfWork } from "../../application/ports.ts";
@@ -45,6 +46,7 @@ function unitOfWork(client: SqlClient, boundTenantId: TenantId, isOpen: () => bo
     if (!isOpen()) throw new Error("PostgreSQL unit of work used outside its transaction.");
   };
   return {
+    idempotency: createPostgresIdempotencyStore(client, boundTenantId, isOpen),
     tenants: {
       insert: async (tenant) => {
         guard();
