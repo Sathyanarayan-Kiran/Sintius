@@ -30,8 +30,8 @@
             "BL-001-01"
           ],
           "implementation": "in_progress",
-          "progress": 90,
-          "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping are implemented. A real PostgreSQL transaction adapter now sets a transaction-local tenant, applies mandatory repository filters and is protected by forced RLS; PostgreSQL integration tests prove missing-context fail-closed behavior and tenant A/B read/write isolation. TC-001-01-03 remains partial because worker/job propagation and a real cache adapter are not yet integrated.",
+          "progress": 92,
+          "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping are implemented. The PostgreSQL transaction adapter sets a transaction-local tenant, applies mandatory repository filters and is protected by forced RLS. The Fastify ingress derives the tenant only from the authenticated principal (single membership, or X-Active-Tenant choosing among signed memberships), rejects a tenant_id in tenant-scoped bodies before any lookup, checks membership before reading tenant state, and runs the handler inside the resolved context; outbox consumers bind the delivered event's tenant. TC-001-01-03 remains partial because worker/job context establishment and a real cache adapter are not yet integrated.",
           "acceptance": [
             "Given verified membership in tenant A, when a request enters the application, tenant A is propagated through asynchronous work without accepting a body override.",
             "Given a principal without membership, access is denied before a domain transaction begins.",
@@ -104,8 +104,8 @@
             "BL-001-02"
           ],
           "implementation": "in_progress",
-          "progress": 85,
-          "notes": "Transaction-aware executor, deterministic SHA-256 canonical hashing, authorization before lookup, payload-conflict 409, mandatory validated key, seven-day default retention and purge port are implemented. The PostgreSQL adapter uses the tenant/scope/key primary key as its serialization point and shares the protected command transaction. All tenant provisioning/lifecycle entry points and the active-tenant foundation proof command require command metadata carrying the idempotency key. Unit and PostgreSQL tests prove exact replay, current authorization before replay, rollback, payload conflict, a 12-request adapter race, tenant isolation, concurrent provisioning and a concurrent active-tenant proof with exactly one mutation/audit/outbox/result commit. Remaining: HTTP ingress and response headers, deterministic failed-final responses, per-tenant retention source and cleanup job, and replay/conflict/pending-age metrics.",
+          "progress": 90,
+          "notes": "Transaction-aware executor, deterministic SHA-256 canonical hashing, authorization before lookup, payload-conflict 409, mandatory validated key, seven-day default retention and purge port are implemented. The PostgreSQL adapter uses the tenant/scope/key primary key as its serialization point and shares the protected command transaction. The Fastify ingress takes the key from the Idempotency-Key header and returns Retry-After with 409 request_in_progress; an HTTP test over PostgreSQL proves exact replay of the stored 201 response, 409 on a changed payload and 400 when the key is missing. Unit and PostgreSQL tests also prove current authorization before replay, rollback, a 12-request adapter race, tenant isolation and concurrent provisioning/proof with exactly one commit. Remaining: key-format decision (spec says UUID), deterministic failed-final responses, per-tenant retention source and cleanup job, and replay/conflict/pending-age metrics.",
           "acceptance": [
             "An identical retry with the same tenant, command, key and payload returns the original response without another effect.",
             "Reusing the key with a different canonical payload returns a 409 conflict.",
@@ -360,8 +360,8 @@
             "BL-001-05"
           ],
           "implementation": "in_progress",
-          "progress": 80,
-          "notes": "Cataloged problem registry enforced at construction, validated trace IDs, transport-neutral boundary mapper (known problems allow-listed; unexpected errors become a sanitized 500 with redacted internal evidence) and golden/security tests implemented. Remaining: concrete HTTP ingress adapter once a framework is selected, propagation of ingress correlation/causation into tenant context and event envelopes, error metrics/log dimensions, and UI code-to-copy mapping.",
+          "progress": 88,
+          "notes": "Cataloged problem registry enforced at construction, validated trace IDs, transport-neutral boundary mapper (known problems allow-listed; unexpected errors become a sanitized 500 with redacted internal evidence) and golden/security tests implemented. The Fastify ingress (apps/api) generates or validates X-Correlation-Id, uses it as the request and log ID, echoes it on every response, carries X-Correlation-Id/X-Causation-Id into the tenant or platform context and from there into audit rows and event envelopes, and renders every failure (schema, JSON, media type, size, 404, unexpected) as application/problem+json with Retry-After for in-flight duplicates. HTTP and PostgreSQL tests prove one ingress correlation ID reaches the record, audit row and published envelope. Remaining: error metrics/log dimensions and UI code-to-copy mapping.",
           "acceptance": [
             "Every expected failure returns RFC-7807-compatible data with a stable code and correlation ID.",
             "Unexpected errors return a sanitized 500 response while preserving internal trace evidence."
@@ -10136,8 +10136,8 @@
             "BL-002-01"
           ],
           "implementation": "in_progress",
-          "progress": 90,
-          "notes": "Aggregate and application handlers (provision, activate, suspend, reactivate, close) use the real PostgreSQL adapter and now execute through trusted platform-scoped idempotency. Tests prove atomic tenant/default-role/administrator/audit/outbox/result commit, replay without repeated effects, authorization before replay lookup, full rollback after injected failure, and database compare-and-set under a concurrent lifecycle race. Remaining: replace the platform-authorizer port with reviewed platform RBAC and add HTTP ingress.",
+          "progress": 93,
+          "notes": "Aggregate and application handlers (provision, activate, suspend, reactivate, close) use the real PostgreSQL adapter and execute through trusted platform-scoped idempotency. Fastify routes (POST /v1/platform/tenants and /{id}/activate|suspend|reactivate|close) require If-Match, return ETag/Location and map a stale version to 412; an HTTP test provisions and activates tenants on PostgreSQL. Tests prove atomic tenant/default-role/administrator/audit/outbox/result commit, replay without repeated effects, authorization before replay lookup, full rollback and database compare-and-set under a concurrent lifecycle race. Remaining: a platform-operator identity model and reviewed platform RBAC to replace the platform-authorizer port.",
           "acceptance": [
             "Provisioning creates the tenant in PROVISIONING and valid commands move it only through the approved state graph.",
             "A stale version or forbidden transition is rejected; CLOSED is terminal.",

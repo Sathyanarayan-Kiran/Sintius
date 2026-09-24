@@ -13,13 +13,15 @@ This repository is the TypeScript/Node.js 24 LTS implementation of the canonical
 - The Phase 0 active-tenant proof command owns an RLS-protected proof record and publishes `foundation.proof_recorded.v1`. Concurrent PostgreSQL retries prove one mutation/audit/outbox/stored response, correlation propagation and tenant-B read/replay isolation. A PostgreSQL release-gate test composes real tenant provisioning, RBAC read from the role tables (including revocation), the proof, a retried dispatch and a deduplicated redelivery. HTTP ingress, an end-to-end trace and the CI release gate remain.
 - Transactional outbox and inbox: ports, a leasing dispatcher with per-aggregate ordering, backoff and dead-lettering, and an idempotent consumer. Producers append to the PostgreSQL outbox table atomically. A PostgreSQL dispatcher store (`FOR UPDATE SKIP LOCKED` on stream heads, dedicated `sintius_dispatcher` role), audited dead-letter resolution and a forced-RLS inbox are integration-tested, including concurrent workers and concurrent redeliveries. The broker choice and a dispatcher runtime loop remain outstanding.
 - Append-only audit: immutable, tamper-evident events stamped from trusted context, allow-list redaction, a permissioned reader whose reads are audited, and adoption by tenant, role, approval and dead-letter commands. Writes use the RLS-protected PostgreSQL table with an INSERT-only application grant, and an integration test proves UPDATE, DELETE and TRUNCATE are denied to the application and dispatcher roles; a database reader remains outstanding.
+- Fastify HTTP ingress (`apps/api`): bearer authentication through the provider-neutral authentication service, tenant derived only from the principal (`X-Active-Tenant` selects among signed memberships), `X-Correlation-Id`/`X-Causation-Id` propagation into context, audit and events, `Idempotency-Key`, `If-Match`/`ETag`, `Retry-After`, strict body schemas and RFC 9457 problem+json for every failure. Routes: tenant provisioning/lifecycle and the test-only proof command. A PostgreSQL HTTP test proves one ingress correlation ID reaches the record, the audit row and the published event.
 - Architecture manifest validation for bounded-context ownership.
 
-Node 24's native erasable-TypeScript support runs the code and tests directly. PostgreSQL access uses the pinned `pg` runtime dependency; no application framework or build toolchain has been selected yet.
+Node 24's native erasable-TypeScript support runs the code and tests directly; there is no build step. `npm run typecheck` runs the pinned TypeScript compiler (`tsc --noEmit`, strict) and is the first step of `npm run check`. Runtime dependencies are pinned: `pg` for PostgreSQL and `fastify` for HTTP.
 
 ## Commands
 
 ```powershell
+npm.cmd run typecheck
 npm.cmd test
 npm.cmd run check:postgres
 npm.cmd run check:architecture

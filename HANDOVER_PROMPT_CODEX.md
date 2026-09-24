@@ -27,14 +27,16 @@ Do not restart discovery or regenerate a smaller backlog.
 
 - Windows. Use `npm.cmd run check`, `npm.cmd test`, `npm.cmd run check:postgres`, `npm.cmd run backlog:generate` (use `npm` on other shells). `check` = architecture, roadmap, requirement coverage, unit tests and PostgreSQL integration tests.
 - Code style: ESM and erasable TypeScript only (no enums, namespaces, parameter properties; use `import type`, `#private` fields, `import.meta.dirname`). Node runs TypeScript directly. Runtime dependency `pg` is pinned for PostgreSQL. Unit tests are imported from `tests/all.test.ts`; database integration tests stay in the explicit `test:postgres` suite so `npm test` remains usable without Docker.
-- **There is no type checker.** `tsc` is not installed and Node only strips types, so type errors are not caught by `npm run check`. Propose a TypeScript dev dependency to the Product Owner rather than adding it silently.
+- **Type checking is part of the gate.** `npm run typecheck` runs pinned TypeScript 7 (`tsconfig.json`: strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `erasableSyntaxOnly`) over apps, modules, platform, tools and tests. Keep it at zero errors.
+- **HTTP framework: Fastify 5 (Product Owner decision).** `apps/api/src/http/server.ts` is the ingress; `apps/api/src/composition/postgres.ts` is the PostgreSQL composition root. Framework types stay in `apps/api`; modules and platform packages must not import Fastify.
 - Modules must not import other modules' internals. `tools/architecture-lint` validates each `modules/*/module.json` (ownedTables, publishedEvents, allowedModuleDependencies). Shared code lives in `platform/`.
 - Git: branch `master`, remote `origin` = `https://github.com/Sathyanarayan-Kiran/Sintius.git`. Verify the current head with `git log -1 --oneline`; commit and push only when the user asks.
 - GitHub push protection scans for secret patterns. Do not put literal secret-shaped strings (for example `sk_test_...`) in source or tests, even fake or documented ones; build them at runtime (`"sk_" + "test_..."`). History was rewritten once to remove one; a local branch `backup-before-secret-fix` still holds the flagged string and must never be pushed.
 - Git prints many "LF will be replaced by CRLF" warnings on this machine; they are harmless.
 - Local database: Docker Compose runs PostgreSQL 17 on `127.0.0.1:54329`; `db:up` waits for health, `db:migrate` applies checksum-protected forward-only migrations, and `db:down` retains the named volume. Compose trust authentication is strictly local-development configuration.
 - Database roles: `sintius_admin` (migrations), `sintius_app` (NOBYPASSRLS application role, tenant-bound per transaction) and `sintius_dispatcher` (NOBYPASSRLS outbox relay: SELECT plus column-limited UPDATE on `outbox_event`, and INSERT into `audit_event` only for the tenant it binds after resolving a dead letter). Migrations are discovered under both `modules/*` and `platform/*`; names are globally ordered.
-- Baseline: `npm run check` passes with **127 unit tests plus 18 PostgreSQL integration tests (145 total)** across three suite files run with `--test-concurrency=1`. Run it before editing and confirm.
+- Baseline: `npm run check` passes typecheck plus **140 unit tests and 19 PostgreSQL integration tests (159 total)** across four PostgreSQL suite files run with `--test-concurrency=1`. Run it before editing and confirm.
+- Open decisions with written options and recommendations: `docs/implementation/decision-proposals.md`. Do not implement a proposal's recommendation as final until the Product Owner confirms it.
 
 ## 3. What exists (verify by reading; do not trust this list blindly)
 
@@ -104,10 +106,10 @@ Design choices I made that the Product Owner has not confirmed: dead-letter bloc
 Do these in order, one bounded tranche at a time, and stop to report after each.
 
 **A. Decision-independent work**
-1. Continue P0-010 with the end-to-end ingress-to-dispatch trace and CI evidence capture; do not call the release gate complete before those remaining acceptance criteria pass.
+1. Continue P0-010: the HTTP ingress-to-dispatch correlation is proven; CI evidence capture (provider being explored by the Product Owner), trace spans/metrics export and platform-operator identity remain.
 2. Consumer-side `aggregate_version` gap detection helper for use after a dead-letter skip.
-3. Propose (do not silently add) a type-check step, and propose a permission or role matrix review for the 12 personas.
-4. An HTTP ingress adapter design note for `apps/api` (correlation and causation IDs, `Idempotency-Key`, `Retry-After`, problem+json). Build it only if the Product Owner approves the framework choice; the repo has no web framework yet.
+3. Role-administration and approval PostgreSQL adapters, then the audit reader adapter and its `audit:read` route.
+4. Extend the Fastify ingress as new commands land: declare each route's permission, keep strict schemas, and add an HTTP contract test per route.
 
 **B. PostgreSQL tranche (Docker Compose decision resolved)**
 1. **Complete for tenant lifecycle:** migration and adapter for identity-tenant, transaction-local tenant binding, forced RLS, repository filters, commit/rollback and CAS concurrency evidence. TC-002-01-03 is `passing`; TC-001-01-03 is conservatively `partial` until the real cache and worker/job paths are integrated.

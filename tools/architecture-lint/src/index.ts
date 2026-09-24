@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 
 interface ModuleManifest {
   readonly name: string;
@@ -34,9 +34,24 @@ for (const entry of readdirSync(modulesDirectory, { withFileTypes: true })) {
   }
 }
 
+// Transport frameworks belong to apps/*; domain modules and platform packages stay framework-free.
+const FRAMEWORK_IMPORT = /(?:from\s+|import\s*\(\s*)["'](?:fastify|@fastify\/[^"']+)["']/;
+function sourceFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) return entry.name === "node_modules" ? [] : sourceFiles(path);
+    return entry.name.endsWith(".ts") ? [path] : [];
+  });
+}
+for (const layer of ["modules", "platform"]) {
+  for (const file of sourceFiles(resolve(root, layer))) {
+    if (FRAMEWORK_IMPORT.test(readFileSync(file, "utf8"))) failures.push(`${relative(root, file)}: HTTP framework imports are only allowed under apps/*`);
+  }
+}
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exitCode = 1;
 } else {
-  console.log(`Architecture manifests valid: ${ownership.size} owned tables across ${moduleCount} module(s).`);
+  console.log(`Architecture manifests valid: ${ownership.size} owned tables across ${moduleCount} module(s); no framework imports outside apps/*.`);
 }

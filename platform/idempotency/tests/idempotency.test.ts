@@ -246,7 +246,10 @@ test("store anomalies fail closed: in-flight, half-written and cross-tenant reco
   const hash = canonicalRequestHash(SCOPE, { subscription_id: "sub_1", quantity: 5 });
   const base = { scope: SCOPE, key: KEY, requestHash: hash, createdAt: NOW.toISOString(), expiresAt: new Date(NOW.valueOf() + DAY).toISOString() };
 
-  await assert.rejects(run(async () => ({ kind: "in_progress", retryAfterSeconds: 2 })), code("request_in_progress"));
+  await assert.rejects(
+    run(async () => ({ kind: "in_progress", retryAfterSeconds: 2 })),
+    (error: unknown) => code("request_in_progress")(error) && (error as PlatformProblem).retryAfterSeconds === 2,
+  );
   await assert.rejects(run(async () => ({ kind: "existing", record: { ...base, tenantId: A, status: "processing" } })), code("request_in_progress"));
   await assert.rejects(
     run(async () => ({ kind: "existing", record: { ...base, tenantId: B, status: "completed", response: { status: 200, body: {} } } })),

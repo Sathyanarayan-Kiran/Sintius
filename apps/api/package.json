@@ -2,5 +2,9 @@
   "name": "@sintius/api",
   "version": "0.1.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    "./http": "./src/http/server.ts",
+    "./composition/postgres": "./src/composition/postgres.ts"
+  }
 }

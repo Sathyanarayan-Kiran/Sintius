@@ -18,7 +18,7 @@
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "db:migrate": "node tools/database/migrate-postgres.mjs",
-    "test:postgres": "node --test --test-concurrency=1 modules/identity-tenant/tests/postgres-persistence.test.ts platform/outbox/tests/postgres-outbox.test.ts tests/integration/phase0-release-gate.test.ts",
+    "test:postgres": "node --test --test-concurrency=1 modules/identity-tenant/tests/postgres-persistence.test.ts platform/outbox/tests/postgres-outbox.test.ts tests/integration/phase0-release-gate.test.ts apps/api/tests/postgres-http.test.ts",
     "check:postgres": "npm run db:up && npm run db:migrate && npm run test:postgres",
     "check:architecture": "node tools/architecture-lint/src/index.ts",
     "check:roadmap": "node tools/validate-roadmap.mjs",

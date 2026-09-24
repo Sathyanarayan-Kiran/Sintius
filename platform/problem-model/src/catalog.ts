@@ -5,6 +5,9 @@
  */
 export const PROBLEM_CATALOG = Object.freeze({
   invalid_trusted_context: Object.freeze({ status: 400, title: "Invalid trusted context" }),
+  request_validation_failed: Object.freeze({ status: 400, title: "Invalid request" }),
+  resource_not_found: Object.freeze({ status: 404, title: "Resource not found" }),
+  precondition_failed: Object.freeze({ status: 412, title: "Precondition failed" }),
   authentication_failed: Object.freeze({ status: 401, title: "Authentication failed" }),
   authentication_assurance_insufficient: Object.freeze({ status: 403, title: "Authentication assurance insufficient" }),
   workload_scope_denied: Object.freeze({ status: 403, title: "Workload scope denied" }),

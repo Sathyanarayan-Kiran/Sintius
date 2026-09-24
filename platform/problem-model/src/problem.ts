@@ -21,10 +21,16 @@ export interface ProblemDetails {
 
 export const PROBLEM_CONTENT_TYPE = "application/problem+json";
 
+export interface PlatformProblemOptions {
+  /** Transport hint (HTTP `Retry-After`); never serialized into the problem body. */
+  readonly retryAfterSeconds?: number;
+}
+
 export class PlatformProblem extends Error {
   readonly problem: Readonly<ProblemDetails>;
+  readonly retryAfterSeconds: number | undefined;
 
-  constructor(details: ProblemDetails) {
+  constructor(details: ProblemDetails, options: PlatformProblemOptions = {}) {
     super(details.detail);
     if (!isRegisteredProblemCode(details.code)) {
       throw new TypeError(`Problem code "${details.code}" is not registered in PROBLEM_CATALOG.`);
@@ -34,6 +40,8 @@ export class PlatformProblem extends Error {
       throw new TypeError(`Problem "${details.code}" must use the cataloged status ${entry.status} and title "${entry.title}".`);
     }
     this.name = "PlatformProblem";
+    const retryAfter = options.retryAfterSeconds;
+    this.retryAfterSeconds = retryAfter !== undefined && Number.isInteger(retryAfter) && retryAfter > 0 ? retryAfter : undefined;
     const { errors, ...rest } = details;
     this.problem = Object.freeze({
       ...rest,
@@ -54,6 +62,7 @@ export interface ProblemInput {
   readonly type?: string;
   readonly correlation_id?: string;
   readonly errors?: readonly ProblemFieldError[];
+  readonly retryAfterSeconds?: number;
 }
 
 /** Builds a problem from the catalog; status and title default to the registered contract. */
@@ -67,5 +76,5 @@ export function problem(input: ProblemInput): PlatformProblem {
     detail: input.detail,
     ...(input.correlation_id === undefined ? {} : { correlation_id: input.correlation_id }),
     ...(input.errors === undefined ? {} : { errors: input.errors }),
-  });
+  }, input.retryAfterSeconds === undefined ? {} : { retryAfterSeconds: input.retryAfterSeconds });
 }

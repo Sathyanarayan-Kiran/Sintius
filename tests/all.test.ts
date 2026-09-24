@@ -11,3 +11,4 @@ import "../platform/idempotency/tests/idempotency.test.ts";
 import "../platform/outbox/tests/outbox.test.ts";
 import "../platform/audit/tests/audit.test.ts";
 import "../modules/foundation-proof/tests/proof-command.test.ts";
+import "../apps/api/tests/http.test.ts";

@@ -102,6 +102,7 @@ function createScopedExecutor<U extends { readonly idempotency: IdempotencyStore
           code: "request_in_progress",
           detail: `A request with this key is still being processed. Retry after ${claim.retryAfterSeconds} seconds.`,
           correlation_id,
+          retryAfterSeconds: claim.retryAfterSeconds,
         });
       }
       if (claim.kind === "existing") {
@@ -117,7 +118,7 @@ function createScopedExecutor<U extends { readonly idempotency: IdempotencyStore
           });
         }
         if (record.status !== "completed" || record.response === undefined) {
-          throw problem({ code: "request_in_progress", detail: "A request with this key is still being processed.", correlation_id });
+          throw problem({ code: "request_in_progress", detail: "A request with this key is still being processed.", correlation_id, retryAfterSeconds: 1 });
         }
         return { response: deepFreeze(structuredClone(record.response)), replayed: true };
       }
