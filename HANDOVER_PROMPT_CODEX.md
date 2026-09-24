@@ -20,7 +20,7 @@ Do not restart discovery or regenerate a smaller backlog.
 - Keep three statements separate in every report: "Backlog traceability: complete", "Implementation coverage: incomplete", "Automated execution: only what actually ran".
 - A mapped requirement is not implemented. A planned test is not a passing test. Never claim 100% from mapping percentages. Implementation evidence is 0 of 1,335 requirements; no durable evidence overlay exists yet for source-derived stories.
 - Do not reopen resolved decisions: TypeScript on Node.js 24 LTS, PostgreSQL, modular monolith with workers, transactional outbox/inbox, REST/OpenAPI, US/USD MVP.
-- Open decisions and spikes (SPIKE-02 decimal/money, SPIKE-03 ID scheme, SPIKE-05 usage throughput, SPIKE-06 rounding, Stripe scope, AI autonomy and identity-provider choices) need a written proposal and Product Owner confirmation. Do not silently choose. Local PostgreSQL execution is resolved as Docker Compose with PostgreSQL 17.
+- SPIKE-02 (money), SPIKE-06 (rounding), the ID scheme and the identity-adapter approach are decided (see decision-proposals.md). SPIKE-05 usage throughput, Stripe scope, AI autonomy and the IdP product still need a written proposal and Product Owner confirmation. Do not silently choose. Local PostgreSQL execution is resolved as Docker Compose with PostgreSQL 17.
 - Never mark a roadmap test `passing` unless the whole named behavior was demonstrated. A pure aggregate plus an in-memory double justifies `partial`, not `passing`.
 
 ## 2. Environment and repository
@@ -35,8 +35,8 @@ Do not restart discovery or regenerate a smaller backlog.
 - Git prints many "LF will be replaced by CRLF" warnings on this machine; they are harmless.
 - Local database: Docker Compose runs PostgreSQL 17 on `127.0.0.1:54329`; `db:up` waits for health, `db:migrate` applies checksum-protected forward-only migrations, and `db:down` retains the named volume. Compose trust authentication is strictly local-development configuration.
 - Database roles: `sintius_admin` (migrations), `sintius_app` (NOBYPASSRLS application role, tenant-bound per transaction) and `sintius_dispatcher` (NOBYPASSRLS outbox relay: SELECT plus column-limited UPDATE on `outbox_event`, and INSERT into `audit_event` only for the tenant it binds after resolving a dead letter). Migrations are discovered under both `modules/*` and `platform/*`; names are globally ordered.
-- Baseline: `npm run check` passes typecheck plus **140 unit tests and 19 PostgreSQL integration tests (159 total)** across four PostgreSQL suite files run with `--test-concurrency=1`. Run it before editing and confirm.
-- Open decisions with written options and recommendations: `docs/implementation/decision-proposals.md`. Do not implement a proposal's recommendation as final until the Product Owner confirms it.
+- Baseline: `npm run check` passes typecheck plus **151 unit tests and 19 PostgreSQL integration tests (170 total)** across four PostgreSQL suite files run with `--test-concurrency=1`. Run it before editing and confirm.
+- Decisions D1–D12 in `docs/implementation/decision-proposals.md` were **all accepted on 2026-09-24**; treat their recommendations as binding. D2 (UUID idempotency keys), D5 (`platform/money`) and D6 (HALF_UP/ACTUAL_DAYS) are implemented. Still open: the SPIKE-03 confirmation benchmark and the text-to-uuid key migration (D7), `jose` and SAML-federation adapters (D8), the persona matrix draft (D9), token-exchange tenant selection (D10), platform operator identity (D11), consumer DLQs (D1), approver permissions on policies (D4), the last-administrator guard (D3), and the CI provider.
 
 ## 3. What exists (verify by reading; do not trust this list blindly)
 

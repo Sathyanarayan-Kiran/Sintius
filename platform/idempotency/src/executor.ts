@@ -9,7 +9,8 @@ import {
 import { canonicalJson, canonicalRequestHash, hashesEqual, type JsonValue } from "./canonical.ts";
 import type { IdempotencyPersistence, IdempotencyStore, StoredResponse } from "./ports.ts";
 
-const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/;
+/** RFC 9562 UUID of any defined version (decision D2, API spec section 8); case-insensitive. */
+const KEY_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCOPE_PATTERN = /^[a-z][a-z0-9_.:-]{0,63}$/;
 const DEFAULT_RETENTION_SECONDS = 7 * 24 * 3600;
 
@@ -71,10 +72,11 @@ function createScopedExecutor<U extends { readonly idempotency: IdempotencyStore
       throw problem({ code: "idempotency_key_required", detail: "This operation requires an Idempotency-Key header.", correlation_id });
     }
     if (!KEY_PATTERN.test(request.key)) {
-      throw problem({ code: "idempotency_key_invalid", detail: "Idempotency-Key must be 16 to 128 URL-safe characters.", correlation_id });
+      throw problem({ code: "idempotency_key_invalid", detail: "Idempotency-Key must be a UUID, for example 8f14e45f-ceea-467f-a0e6-1c2d3e4f5a6b.", correlation_id });
     }
     assertNoTenantIdentity(request.payload, correlation_id);
-    const key = request.key;
+    // Canonical lowercase, so the same UUID in either case is the same key.
+    const key = request.key.toLowerCase();
     const requestHash = canonicalRequestHash(request.scope, request.payload);
 
     await authorize();

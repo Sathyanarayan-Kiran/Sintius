@@ -6,6 +6,7 @@ import { resolvePlatformCommandContext } from "../../../platform/tenant-context/
 import { createAuditPolicy, createAuditRecorder, verifyAuditEvent } from "../../../platform/audit/src/index.ts";
 import { TENANT_AUDIT_FIELDS, createTenantCommands } from "../application/tenant-commands.ts";
 import { AllowListAuthorizer, InMemoryTenantPersistence } from "./in-memory-persistence.ts";
+import { testIdempotencyKey } from "../../../tests/support/idempotency-key.ts";
 
 const NOW = new Date("2026-09-23T10:00:00.000Z");
 
@@ -16,7 +17,7 @@ function setup(allowed: readonly ("tenant:provision" | "tenant:manage_lifecycle"
   const audit = createAuditRecorder({ policy: createAuditPolicy(TENANT_AUDIT_FIELDS), clock: () => NOW, newId: () => `aud_test_${++counter}` });
   const rawCommands = createTenantCommands({ persistence, authorizer, audit, clock: () => NOW, newEventId: () => `evt_test_${++counter}` });
   let idempotencySequence = 0;
-  const metadata = () => ({ idempotencyKey: `tenant-command-key-${String(++idempotencySequence).padStart(6, "0")}` });
+  const metadata = () => ({ idempotencyKey: testIdempotencyKey(`tenant-command-key-${String(++idempotencySequence).padStart(6, "0")}`) });
   const commands = Object.freeze({
     provisionTenant: (context: Parameters<typeof rawCommands.provisionTenant>[0], input: Parameters<typeof rawCommands.provisionTenant>[1], commandMetadata = metadata()) =>
       rawCommands.provisionTenant(context, input, commandMetadata),
@@ -77,7 +78,7 @@ test("provisioning writes tenant, default role, initial admin, audit and outbox 
 
 test("tenant command idempotency replays the stored result without another mutation, audit or event", async () => {
   const { persistence, commands, context } = setup();
-  const metadata = { idempotencyKey: "tenant-provision-replay-0001" };
+  const metadata = { idempotencyKey: testIdempotencyKey("tenant-provision-replay-0001") };
   const first = await commands.provisionTenant(context, provisionInput, metadata);
   const replay = await commands.provisionTenant(context, provisionInput, metadata);
 
@@ -93,7 +94,7 @@ test("tenant command idempotency replays the stored result without another mutat
 test("tenant commands require an idempotency key and reject payload changes for a reused key", async () => {
   const { persistence, rawCommands, context } = setup();
   await assert.rejects(rawCommands.provisionTenant(context, provisionInput), rejectsWith("idempotency_key_required"));
-  const metadata = { idempotencyKey: "tenant-provision-conflict-001" };
+  const metadata = { idempotencyKey: testIdempotencyKey("tenant-provision-conflict-001") };
   await rawCommands.provisionTenant(context, provisionInput, metadata);
   await assert.rejects(
     rawCommands.provisionTenant(context, { ...provisionInput, displayName: "Different" }, metadata),
@@ -106,7 +107,7 @@ test("tenant commands require an idempotency key and reject payload changes for 
 
 test("a stored tenant replay still requires current authorization before any lookup", async () => {
   const { persistence, commands, context } = setup();
-  const metadata = { idempotencyKey: "tenant-provision-authorize-001" };
+  const metadata = { idempotencyKey: testIdempotencyKey("tenant-provision-authorize-001") };
   await commands.provisionTenant(context, provisionInput, metadata);
   const transactionsBeforeReplay = persistence.transactionsStarted;
   const denied = createTenantCommands({
@@ -174,7 +175,7 @@ for (const point of ["role", "membership", "audit", "outbox"] as const) {
 test("lifecycle transitions record before/after audit and versioned outbox events", async () => {
   const { persistence, commands, context } = setup();
   await commands.provisionTenant(context, provisionInput);
-  const activationMetadata = { idempotencyKey: "tenant-activation-replay-0001" };
+  const activationMetadata = { idempotencyKey: testIdempotencyKey("tenant-activation-replay-0001") };
   const active = await commands.activateTenant(context, { tenantId: "tenant_A", expectedVersion: 1 }, activationMetadata);
   assert.equal(active.state, "ACTIVE");
   assert.deepEqual(

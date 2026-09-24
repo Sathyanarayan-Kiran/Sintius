@@ -21,6 +21,7 @@ import {
   type TenantId,
 } from "../../platform/tenant-context/src/index.ts";
 import { testPrincipal } from "../support/authenticated-principal.ts";
+import { testIdempotencyKey } from "../support/idempotency-key.ts";
 
 /**
  * Phase 0 exit composition (P0-010) on real PostgreSQL: provisioned tenants, trusted context, RBAC
@@ -81,7 +82,7 @@ test("P0-010 PostgreSQL release gate: RBAC-guarded idempotent proof, retried dis
     clock,
   });
   const operator = () => resolvePlatformCommandContext({ principal: testPrincipal([], { actor: "platform_operator" }), correlationId: `corr_gate_${++sequence}` });
-  const key = () => ({ idempotencyKey: `phase0-gate-key-${String(++sequence).padStart(8, "0")}` });
+  const key = () => ({ idempotencyKey: testIdempotencyKey(`phase0-gate-key-${String(++sequence).padStart(8, "0")}`) });
   for (const id of ["tenant_gate_A", "tenant_gate_B"]) {
     await tenantCommands.provisionTenant(operator(), { tenantId: id, displayName: id, initialAdministratorActorId: `admin_${id}` }, key());
     await tenantCommands.activateTenant(operator(), { tenantId: id, expectedVersion: 1 }, key());
@@ -115,14 +116,14 @@ test("P0-010 PostgreSQL release gate: RBAC-guarded idempotent proof, retried dis
   // 3. Deny by default: another member of A, the tenant administrator and the same actor in B hold no grant.
   for (const [tenant, actor] of [[A, "other_member"], [A, "admin_tenant_gate_A"], [B, "proof_user"]] as const) {
     await runWithTenantContext(tenantContext(tenant, actor), async () => {
-      await assert.rejects(proofCommand({ label: "denied" }, { idempotencyKey: "phase0-gate-denied-000001" }), denied);
+      await assert.rejects(proofCommand({ label: "denied" }, { idempotencyKey: testIdempotencyKey("phase0-gate-denied-000001") }), denied);
     });
   }
   assert.equal(await proofRows(A) + (await proofRows(B)), 0, "denied commands wrote nothing, not even an idempotency claim");
 
   // 4. The authorized member's concurrent retries commit once.
   const trusted = tenantContext(A, "proof_user", "corr_gate_release_proof");
-  const metadata = { idempotencyKey: "phase0-gate-proof-key-000001" };
+  const metadata = { idempotencyKey: testIdempotencyKey("phase0-gate-proof-key-000001") };
   const [first, retry] = await Promise.all([
     runWithTenantContext(trusted, () => proofCommand({ label: "phase-0-exit" }, metadata)),
     runWithTenantContext(trusted, () => proofCommand({ label: "phase-0-exit" }, metadata)),
@@ -186,7 +187,7 @@ test("P0-010 PostgreSQL release gate: RBAC-guarded idempotent proof, retried dis
   await admin.query("UPDATE tenant_role_assignment SET status = 'revoked', revoked_at = now() WHERE tenant_id = $1 AND actor_id = 'proof_user'", [A]);
   await runWithTenantContext(tenantContext(A, "proof_user"), async () => {
     await assert.rejects(proofCommand({ label: "phase-0-exit" }, metadata), denied);
-    await assert.rejects(proofCommand({ label: "after revocation" }, { idempotencyKey: "phase0-gate-proof-key-000002" }), denied);
+    await assert.rejects(proofCommand({ label: "after revocation" }, { idempotencyKey: testIdempotencyKey("phase0-gate-proof-key-000002") }), denied);
   });
   assert.equal(await proofRows(A), 3);
 });

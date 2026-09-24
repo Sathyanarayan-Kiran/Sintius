@@ -14,6 +14,7 @@ This repository is the TypeScript/Node.js 24 LTS implementation of the canonical
 - Transactional outbox and inbox: ports, a leasing dispatcher with per-aggregate ordering, backoff and dead-lettering, and an idempotent consumer. Producers append to the PostgreSQL outbox table atomically. A PostgreSQL dispatcher store (`FOR UPDATE SKIP LOCKED` on stream heads, dedicated `sintius_dispatcher` role), audited dead-letter resolution and a forced-RLS inbox are integration-tested, including concurrent workers and concurrent redeliveries. The broker choice and a dispatcher runtime loop remain outstanding.
 - Append-only audit: immutable, tamper-evident events stamped from trusted context, allow-list redaction, a permissioned reader whose reads are audited, and adoption by tenant, role, approval and dead-letter commands. Writes use the RLS-protected PostgreSQL table with an INSERT-only application grant, and an integration test proves UPDATE, DELETE and TRUNCATE are denied to the application and dispatcher roles; a database reader remains outstanding.
 - Fastify HTTP ingress (`apps/api`): bearer authentication through the provider-neutral authentication service, tenant derived only from the principal (`X-Active-Tenant` selects among signed memberships), `X-Correlation-Id`/`X-Causation-Id` propagation into context, audit and events, `Idempotency-Key`, `If-Match`/`ETag`, `Retry-After`, strict body schemas and RFC 9457 problem+json for every failure. Routes: tenant provisioning/lifecycle and the test-only proof command. A PostgreSQL HTTP test proves one ingress correlation ID reaches the record, the audit row and the published event.
+- `platform/money`: the SPIKE-02 money foundation, proven by hand-computed golden cases (USD/INR, JPY, KWD) and seeded property suites cross-checked against an independent decimal oracle.
 - Architecture manifest validation for bounded-context ownership.
 
 Node 24's native erasable-TypeScript support runs the code and tests directly; there is no build step. `npm run typecheck` runs the pinned TypeScript compiler (`tsc --noEmit`, strict) and is the first step of `npm run check`. Runtime dependencies are pinned: `pg` for PostgreSQL and `fastify` for HTTP.
@@ -35,7 +36,7 @@ npm.cmd run check
 - Tenant identity comes from verified principals, never request bodies.
 - Domain modules do not import another module's domain or infrastructure.
 - Financial commands must add an idempotent replay test when introduced.
-- Money will use the SPIKE-02-selected fixed-point/decimal implementation; JavaScript `number` is prohibited for monetary values.
+- Money uses `platform/money` (decision D5): exact BigInt fixed-point `Decimal` (38 digits, scale 18) and minor-unit `Money`, with HALF_UP rounding, ACTUAL_DAYS proration and largest-remainder allocation (D6). The architecture lint rejects float rounding/parsing and money-named `number` fields. `decimal.js` is a dev-only test oracle.
 - Event and API types are generated from source contracts and are never hand-edited.
 
 See [Phase 0 implementation backlog](docs/implementation/phase-0-backlog.md) for delivery scope and acceptance criteria.

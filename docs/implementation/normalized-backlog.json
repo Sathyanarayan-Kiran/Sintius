@@ -105,7 +105,7 @@
           ],
           "implementation": "in_progress",
           "progress": 90,
-          "notes": "Transaction-aware executor, deterministic SHA-256 canonical hashing, authorization before lookup, payload-conflict 409, mandatory validated key, seven-day default retention and purge port are implemented. The PostgreSQL adapter uses the tenant/scope/key primary key as its serialization point and shares the protected command transaction. The Fastify ingress takes the key from the Idempotency-Key header and returns Retry-After with 409 request_in_progress; an HTTP test over PostgreSQL proves exact replay of the stored 201 response, 409 on a changed payload and 400 when the key is missing. Unit and PostgreSQL tests also prove current authorization before replay, rollback, a 12-request adapter race, tenant isolation and concurrent provisioning/proof with exactly one commit. Remaining: key-format decision (spec says UUID), deterministic failed-final responses, per-tenant retention source and cleanup job, and replay/conflict/pending-age metrics.",
+          "notes": "Transaction-aware executor, deterministic SHA-256 canonical hashing, authorization before lookup, payload-conflict 409, mandatory validated key, seven-day default retention and purge port are implemented. The PostgreSQL adapter uses the tenant/scope/key primary key as its serialization point and shares the protected command transaction. The Fastify ingress takes the key from the Idempotency-Key header and returns Retry-After with 409 request_in_progress; an HTTP test over PostgreSQL proves exact replay of the stored 201 response, 409 on a changed payload and 400 when the key is missing. Unit and PostgreSQL tests also prove current authorization before replay, rollback, a 12-request adapter race, tenant isolation and concurrent provisioning/proof with exactly one commit. Keys are RFC 9562 UUIDs compared case-insensitively (decision D2). Remaining: deterministic failed-final responses, per-tenant retention source and cleanup job, and replay/conflict/pending-age metrics.",
           "acceptance": [
             "An identical retry with the same tenant, command, key and payload returns the original response without another effect.",
             "Reusing the key with a different canonical payload returns a 409 conflict.",
@@ -13259,9 +13259,9 @@
           "backlog": [
             "BL-005-02"
           ],
-          "implementation": "blocked",
-          "progress": 0,
-          "notes": "Awaiting SPIKE-02.",
+          "implementation": "in_progress",
+          "progress": 10,
+          "notes": "Unblocked by D5 (2026-09-24). platform/money supplies exact BigInt fixed-point Decimal and minor-unit Money; neither converts to a JavaScript number. The architecture lint rejects parseFloat/toFixed/toPrecision/Math rounding in production source and money-named fields typed number anywhere (line opt-out only with a stated reason), so the no-float path is enforced. Remaining: the charge-type rating engine and its golden dataset.",
           "acceptance": [
             "Flat, per-seat, one-time, volume, graduated-tier and allowance/overage models match the approved golden examples.",
             "No monetary calculation uses binary floating point."
@@ -13271,13 +13271,13 @@
               "id": "TC-005-02-01",
               "name": "MVP charge-type golden dataset",
               "type": "golden",
-              "status": "blocked"
+              "status": "not_run"
             },
             {
               "id": "TC-005-02-02",
               "name": "No binary-float money path",
               "type": "architecture",
-              "status": "blocked"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E005",
@@ -13311,9 +13311,9 @@
           "backlog": [
             "BL-005-03"
           ],
-          "implementation": "blocked",
-          "progress": 0,
-          "notes": "Awaiting SPIKE-06 finance sign-off.",
+          "implementation": "in_progress",
+          "progress": 25,
+          "notes": "D6 accepted 2026-09-24: HALF_UP and ACTUAL_DAYS. prorateActualDays computes amount x used days / period days exactly on half-open civil-date intervals and rounds once; golden cases cover 28-, 29-, 30- and 31-day months, a leap day, JPY and invalid dates. Remaining: NONE, FULL_PERIOD_ONLY and IMMEDIATE_FULL policies, policy versioning and calculation traces, tenant time-zone/DST boundary rules and their property tests.",
           "acceptance": [
             "NONE, ACTUAL_DAYS, FULL_PERIOD_ONLY and IMMEDIATE_FULL produce policy-versioned traces.",
             "Calendar and DST boundaries follow the finance-approved convention."
@@ -13323,13 +13323,13 @@
               "id": "TC-005-03-01",
               "name": "Proration boundary golden cases",
               "type": "golden",
-              "status": "blocked"
+              "status": "partial"
             },
             {
               "id": "TC-005-03-02",
               "name": "DST and calendar-day property cases",
               "type": "property",
-              "status": "blocked"
+              "status": "not_run"
             }
           ],
           "epicId": "SUB-E005",
@@ -13363,9 +13363,9 @@
           "backlog": [
             "BL-005-04"
           ],
-          "implementation": "blocked",
-          "progress": 0,
-          "notes": "Awaiting SPIKE-02 and SPIKE-06.",
+          "implementation": "in_progress",
+          "progress": 20,
+          "notes": "Unblocked by D5/D6. platform/money implements HALF_UP/HALF_EVEN/DOWN/UP rounding and deterministic largest-remainder allocation with key-ordered tie-break; 1,000 seeded property cases prove parts sum exactly, stay within one minor unit of the exact share and do not depend on input order. The invariant stays partial until pricing components allocate through it. Remaining: discount, minimum and cap operations in documented order with rounding only at approved boundaries.",
           "acceptance": [
             "Operations apply in the documented order and currency rounding occurs only at approved boundaries.",
             "Allocated rounded amounts reconcile exactly to the rounded total."
@@ -13375,13 +13375,13 @@
               "id": "TC-005-04-01",
               "name": "Discount/minimum/cap ordering golden cases",
               "type": "golden",
-              "status": "blocked"
+              "status": "not_run"
             },
             {
               "id": "TC-005-04-02",
               "name": "Remainder allocation invariant",
               "type": "property",
-              "status": "blocked"
+              "status": "partial"
             }
           ],
           "epicId": "SUB-E005",
@@ -13701,9 +13701,9 @@
           "backlog": [
             "BL-005-09"
           ],
-          "implementation": "blocked",
+          "implementation": "not_started",
           "progress": 0,
-          "notes": "Runs after SPIKE-02 and SPIKE-06 decisions.",
+          "notes": "Unblocked: SPIKE-02 selected BigInt fixed-point with decimal.js as a dev-only oracle (D5), SPIKE-06 selected HALF_UP and ACTUAL_DAYS (D6). The money-level golden suite (0-, 2- and 3-decimal currencies, overflow, excess scale, division by zero) and 3,000-case oracle property suites pass; the pricing-level dataset follows the rating engine.",
           "acceptance": [
             "The approved multi-currency golden dataset passes with zero precision loss.",
             "Property tests cover monotonicity, tier partitioning, caps, allocation and deterministic replay."
@@ -13713,13 +13713,13 @@
               "id": "TC-005-09-01",
               "name": "Full approved golden dataset",
               "type": "golden",
-              "status": "blocked"
+              "status": "not_run"
             },
             {
               "id": "TC-005-09-02",
               "name": "Pricing property-test suite",
               "type": "property",
-              "status": "blocked"
+              "status": "not_run"
             }
           ],
           "epicId": "SUB-E005",

@@ -19,6 +19,7 @@ import { TENANT_AUDIT_FIELDS, createTenantCommands } from "../application/tenant
 import type { TenantUnitOfWork } from "../application/ports.ts";
 import { PostgresTenantPersistence } from "../infrastructure/postgres/tenant-persistence.ts";
 import { AllowListAuthorizer } from "./in-memory-persistence.ts";
+import { testIdempotencyKey } from "../../../tests/support/idempotency-key.ts";
 
 const { Pool } = pg;
 const adminUrl = process.env.SINTIUS_MIGRATION_DATABASE_URL ?? "postgresql://sintius_admin@127.0.0.1:54329/sintius";
@@ -50,7 +51,7 @@ function commands(audit = createAuditRecorder({
     clock: () => NOW,
     newEventId: () => `evt_pg_${++sequence}`,
   });
-  const metadata = () => ({ idempotencyKey: `postgres-command-key-${String(++sequence).padStart(8, "0")}` });
+  const metadata = () => ({ idempotencyKey: testIdempotencyKey(`postgres-command-key-${String(++sequence).padStart(8, "0")}`) });
   return Object.freeze({
     provisionTenant: (commandContext: Parameters<typeof raw.provisionTenant>[0], input: Parameters<typeof raw.provisionTenant>[1], commandMetadata = metadata()) =>
       raw.provisionTenant(commandContext, input, commandMetadata),
@@ -122,7 +123,7 @@ test("P0-010 concurrent provisioning retry commits one tenant, audit, outbox and
     displayName: "Phase 0 proof",
     initialAdministratorActorId: "admin_phase0_proof",
   };
-  const metadata = { idempotencyKey: "phase0-provision-proof-key-0001" };
+  const metadata = { idempotencyKey: testIdempotencyKey("phase0-provision-proof-key-0001") };
 
   const results = await Promise.all([
     service.provisionTenant(commandContext, input, metadata),
@@ -178,7 +179,7 @@ test("P0-010 active-tenant proof is idempotent, atomic, traced and isolated by P
     newProofRecordId: () => `proof_pg_${++proofSequence}`,
     newEventId: () => `evt_foundation_${++proofSequence}`,
   });
-  const metadata = { idempotencyKey: "phase0-active-proof-key-000001" };
+  const metadata = { idempotencyKey: testIdempotencyKey("phase0-active-proof-key-000001") };
   const trustedA = tenantContext(tenantA, "proof_user_A");
 
   const [first, replay] = await Promise.all([
