@@ -44,6 +44,10 @@ export const PROBLEM_CATALOG = Object.freeze({
   audit_event_invalid: Object.freeze({ status: 500, title: "Audit event invalid" }),
   tenant_context_missing: Object.freeze({ status: 500, title: "Tenant context required" }),
   tenant_context_mismatch: Object.freeze({ status: 500, title: "Tenant context mismatch" }),
+  invalid_decimal: Object.freeze({ status: 422, title: "Invalid decimal" }),
+  calculation_rejected: Object.freeze({ status: 422, title: "Calculation rejected" }),
+  unsupported_currency: Object.freeze({ status: 422, title: "Unsupported currency" }),
+  currency_mismatch: Object.freeze({ status: 422, title: "Currency mismatch" }),
   internal_error: Object.freeze({ status: 500, title: "Internal error" }),
 } as const);
 

@@ -70,6 +70,10 @@ test("TC-001-05-01 the problem catalog is a stable published contract", () => {
     ["audit_event_invalid", 500, "Audit event invalid"],
     ["tenant_context_missing", 500, "Tenant context required"],
     ["tenant_context_mismatch", 500, "Tenant context mismatch"],
+    ["invalid_decimal", 422, "Invalid decimal"],
+    ["calculation_rejected", 422, "Calculation rejected"],
+    ["unsupported_currency", 422, "Unsupported currency"],
+    ["currency_mismatch", 422, "Currency mismatch"],
     ["internal_error", 500, "Internal error"],
   ];
   const actual = Object.entries(PROBLEM_CATALOG).map(([code, entry]) => [code, entry.status, entry.title]);
