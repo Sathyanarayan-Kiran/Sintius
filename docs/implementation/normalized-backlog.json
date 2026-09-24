@@ -103,9 +103,9 @@
           "backlog": [
             "BL-001-02"
           ],
-          "implementation": "not_started",
-          "progress": 0,
-          "notes": "",
+          "implementation": "in_progress",
+          "progress": 50,
+          "notes": "Transaction-aware idempotent executor, canonical request hashing (deterministic SHA-256, rejects non-JSON), store port with atomic-claim contract, mandatory validated Idempotency-Key, authorization before lookup so replay cannot bypass it, 409 on payload reuse, request_in_progress handling, seven-day default retention and a purge port are implemented and unit-tested against an in-memory double that models the store contract. All three tests stay partial: no PostgreSQL unique-index adapter exists, so real concurrent-race and cross-tenant isolation are unproven. Remaining: PostgreSQL adapter and idempotency_record migration, HTTP ingress (Idempotency-Key header, Retry-After, ETag), storing deterministic failures (failed-final), per-tenant retention policy source, cleanup job, replay/conflict/pending-age metrics.",
           "acceptance": [
             "An identical retry with the same tenant, command, key and payload returns the original response without another effect.",
             "Reusing the key with a different canonical payload returns a 409 conflict.",
@@ -118,19 +118,19 @@
               "id": "TC-001-02-01",
               "name": "Exact replay returns one response and one effect",
               "type": "contract",
-              "status": "not_run"
+              "status": "partial"
             },
             {
               "id": "TC-001-02-02",
               "name": "Concurrent duplicate race produces one effect",
               "type": "concurrency",
-              "status": "not_run"
+              "status": "partial"
             },
             {
               "id": "TC-001-02-03",
               "name": "Same key remains isolated between tenants",
               "type": "security",
-              "status": "not_run"
+              "status": "partial"
             }
           ],
           "epicId": "SUB-E001",
