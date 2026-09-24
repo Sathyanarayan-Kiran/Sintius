@@ -27,7 +27,12 @@ export function createIdempotentConsumer<U extends { readonly inbox: InboxStore 
     if (!nonBlank(envelope?.id) || !nonBlank(envelope?.tenant_id) || !nonBlank(envelope?.type)) {
       throw problem({ code: "invalid_trusted_context", detail: "Event envelope is missing its id, tenant or type." });
     }
-    return dependencies.persistence.runInTransaction(async (unitOfWork) => {
+    const scope = {
+      tenantId: envelope.tenant_id,
+      correlationId: envelope.correlation_id,
+      ...(nonBlank(envelope.causation_id) ? { causationId: envelope.causation_id } : {}),
+    };
+    return dependencies.persistence.runInTransaction(scope, async (unitOfWork) => {
       const outcome = await unitOfWork.inbox.tryRecord({
         consumer: dependencies.consumer,
         tenantId: envelope.tenant_id,

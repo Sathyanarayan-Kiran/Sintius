@@ -3,6 +3,7 @@ import type {
   DeadLetterInfo,
   InboxPersistence,
   InboxStore,
+  InboxTransactionScope,
   LeaseRequest,
   OutboxEntry,
   OutboxStats,
@@ -26,10 +27,18 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 const streamOf = (envelope: Readonly<EventEnvelope>) => [envelope.tenant_id, envelope.aggregate_type, envelope.aggregate_id].join("|");
 
-export class InMemoryOutbox implements OutboxStore, InboxPersistence<TestUnitOfWork> {
+export class InMemoryOutbox implements OutboxStore {
   domainRows: string[] = [];
   entries: Mutable<OutboxEntry>[] = [];
   inboxRecords = new Set<string>();
+  /** Consumer-side view: records the scope each consumer transaction was bound to. */
+  readonly inboxScopes: InboxTransactionScope[] = [];
+  readonly inbox: InboxPersistence<TestUnitOfWork> = {
+    runInTransaction: (scope, work) => {
+      this.inboxScopes.push(scope);
+      return this.runInTransaction(work);
+    },
+  };
   #sequence = 0;
 
   async runInTransaction<T>(work: (unitOfWork: TestUnitOfWork) => Promise<T>): Promise<T> {

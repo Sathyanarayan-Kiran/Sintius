@@ -242,7 +242,7 @@ test("TC-001-03-02 crash after publish: the event is redelivered and the consume
   const effects: string[] = [];
   const consume = createIdempotentConsumer({
     consumer: "billing.projector",
-    persistence: outbox,
+    persistence: outbox.inbox,
     clock: () => new Date(T0),
     handle: async (received, uow: TestUnitOfWork) => {
       uow.domain.write(`applied:${received.id}`);
@@ -273,7 +273,7 @@ test("inbox deduplication is per consumer and per tenant, and a failing handler 
   const make = (consumer: string, fail = false) =>
     createIdempotentConsumer({
       consumer,
-      persistence: outbox,
+      persistence: outbox.inbox,
       clock: () => new Date(T0),
       handle: async (received) => {
         if (fail) throw new Error("handler failed");
@@ -289,12 +289,17 @@ test("inbox deduplication is per consumer and per tenant, and a failing handler 
   const sameIdOtherTenant = { ...event, tenant_id: B } as EventEnvelope;
   assert.equal((await make("invoicing.projector")(sameIdOtherTenant)).processed, true, "dedup never crosses tenants");
   assert.deepEqual(handled, ["invoicing.projector:tenant_A", "notifications:tenant_A", "invoicing.projector:tenant_B"]);
+  assert.deepEqual(
+    outbox.inboxScopes.map((scope) => [scope.tenantId, scope.correlationId]),
+    [[A, "corr_out_1"], [A, "corr_out_1"], [A, "corr_out_1"], [A, "corr_out_1"], [B, "corr_out_1"]],
+    "each consumer transaction is bound to the delivered event's tenant and correlation",
+  );
 });
 
 test("malformed envelopes and consumer names are rejected", async () => {
   const { outbox } = harness();
-  assert.throws(() => createIdempotentConsumer({ consumer: "Bad Name", persistence: outbox, clock: () => new Date(T0), handle: async () => {} }), (error: unknown) => error instanceof PlatformProblem);
-  const consume = createIdempotentConsumer({ consumer: "ok.consumer", persistence: outbox, clock: () => new Date(T0), handle: async () => {} });
+  assert.throws(() => createIdempotentConsumer({ consumer: "Bad Name", persistence: outbox.inbox, clock: () => new Date(T0), handle: async () => {} }), (error: unknown) => error instanceof PlatformProblem);
+  const consume = createIdempotentConsumer({ consumer: "ok.consumer", persistence: outbox.inbox, clock: () => new Date(T0), handle: async () => {} });
   await assert.rejects(consume({ ...envelope(), id: " " } as EventEnvelope), (error: unknown) => error instanceof PlatformProblem);
   await assert.rejects(consume({ ...envelope(), tenant_id: "" } as unknown as EventEnvelope), (error: unknown) => error instanceof PlatformProblem);
   assert.equal(outbox.inboxRecords.size, 0);
