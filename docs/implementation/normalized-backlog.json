@@ -30,8 +30,8 @@
             "BL-001-01"
           ],
           "implementation": "in_progress",
-          "progress": 85,
-          "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping implemented and unit-tested against in-memory ports. Remaining: real PostgreSQL/RLS transaction binding (TC-001-01-03 stays not run), worker/job context and a real cache adapter.",
+          "progress": 90,
+          "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping are implemented. A real PostgreSQL transaction adapter now sets a transaction-local tenant, applies mandatory repository filters and is protected by forced RLS; PostgreSQL integration tests prove missing-context fail-closed behavior and tenant A/B read/write isolation. TC-001-01-03 remains partial because worker/job propagation and a real cache adapter are not yet integrated.",
           "acceptance": [
             "Given verified membership in tenant A, when a request enters the application, tenant A is propagated through asynchronous work without accepting a body override.",
             "Given a principal without membership, access is denied before a domain transaction begins.",
@@ -54,7 +54,7 @@
               "id": "TC-001-01-03",
               "name": "Trusted tenant reaches transaction, cache and event envelope",
               "type": "integration",
-              "status": "not_run"
+              "status": "partial"
             }
           ],
           "epicId": "SUB-E001",
@@ -205,8 +205,8 @@
             "BL-001-03"
           ],
           "implementation": "in_progress",
-          "progress": 45,
-          "notes": "Outbox writer/store/publisher/inbox ports with adapter contracts, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer wrapper (dedup per consumer and tenant, rolled back with the handler) are implemented and unit-tested against an in-memory double. Both tests stay partial: atomicity is modeled, not proven against a real database, and no broker or crash is real. Dead-letter policy: a dead-lettered event blocks later events of the SAME aggregate (order over liveness); the dispatcher never skips on its own. An authorized operator must requeue or skip it with a recorded reason and identity (skip keeps the envelope as evidence and unblocks the stream), and stats expose blocked streams and oldest dead-letter age for alerting. Dead-letter resolution needs the outbox:dead_letter:resolve permission (in the catalog) and is audited against the affected tenant in the same transaction. Remaining: consumer-side aggregate_version gap detection after a skip, PostgreSQL outbox/inbox tables and SKIP LOCKED leasing adapter, real broker adapter (undecided), schema-registry validation at publish time, consumer-side retry/dead-letter queue, dispatcher runtime and lease-renewal, workload identity and RLS for the dispatcher role, oldest-age/attempt/dead-letter metrics export, retention.",
+          "progress": 50,
+          "notes": "Outbox writer/store/publisher/inbox ports with adapter contracts, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer wrapper (dedup per consumer and tenant, rolled back with the handler) are implemented and unit-tested against an in-memory double. The first PostgreSQL migration includes an RLS-protected outbox_event table with INSERT-only application permission, and tenant provisioning integration tests prove the domain mutation and envelope commit or roll back together. Both roadmap tests remain partial because there is no PostgreSQL leasing/inbox adapter and no real broker/crash proof. Dead-letter policy: a dead-lettered event blocks later events of the SAME aggregate (order over liveness); the dispatcher never skips on its own. An authorized operator must requeue or skip it with a recorded reason and identity (skip keeps the envelope as evidence and unblocks the stream), and stats expose blocked streams and oldest dead-letter age for alerting. Dead-letter resolution needs the outbox:dead_letter:resolve permission (in the catalog) and is audited against the affected tenant in the same transaction. Remaining: consumer-side aggregate_version gap detection after a skip, PostgreSQL inbox table and SKIP LOCKED leasing adapter for the existing outbox table, real broker adapter (undecided), schema-registry validation at publish time, consumer-side retry/dead-letter queue, dispatcher runtime and lease-renewal, workload identity and RLS for the dispatcher role, oldest-age/attempt/dead-letter metrics export, retention.",
           "acceptance": [
             "A domain mutation and its outbox record commit or roll back in one transaction.",
             "After a dispatcher failure, the event is retried and consumers deduplicate it by event ID."
@@ -256,9 +256,9 @@
           "backlog": [
             "BL-001-04"
           ],
-          "implementation": "not_started",
-          "progress": 0,
-          "notes": "",
+          "implementation": "in_progress",
+          "progress": 25,
+          "notes": "The first PostgreSQL migration gives all seven current foundation tables a tenant_id, enables and forces RLS, creates a policy bound to transaction-local app.tenant_id and uses a NOBYPASSRLS application role. Identity-tenant repository queries also include explicit tenant filters. Integration evidence proves no-context reads return no rows and a cross-tenant insert is rejected. Both tests remain partial until every tenant-owned table and repository is migrated and the full tenant A/B select/insert/update/delete matrix is automated.",
           "acceptance": [
             "Every tenant-owned table has forced RLS and every repository requires trusted tenant context.",
             "Tenant A cannot read, insert, update or delete tenant B data even if an application filter is bypassed.",
@@ -272,13 +272,13 @@
               "id": "TC-001-04-01",
               "name": "Tenant A/B CRUD isolation matrix",
               "type": "security",
-              "status": "not_run"
+              "status": "partial"
             },
             {
               "id": "TC-001-04-02",
               "name": "Missing database tenant context fails closed",
               "type": "integration",
-              "status": "not_run"
+              "status": "partial"
             }
           ],
           "epicId": "SUB-E001",
@@ -10136,8 +10136,8 @@
             "BL-002-01"
           ],
           "implementation": "in_progress",
-          "progress": 60,
-          "notes": "Aggregate plus application command handlers (provision, activate, suspend, reactivate, close) behind persistence, authorizer, audit and outbox ports; unit-tested with an in-memory test double only. Remaining: real PostgreSQL adapter and atomicity integration test (TC-002-01-03 stays not run), real RBAC authorizer (P0-005), HTTP ingress.",
+          "progress": 85,
+          "notes": "Aggregate and application handlers (provision, activate, suspend, reactivate, close) now use a real PostgreSQL adapter. Integration tests prove atomic tenant/default-role/administrator/audit/outbox commit, full rollback after an injected failure, and database compare-and-set behavior under a concurrent lifecycle race. Remaining: wrap lifecycle entry points with platform idempotency, replace the platform-authorizer port with reviewed platform RBAC, and add HTTP ingress.",
           "acceptance": [
             "Provisioning creates the tenant in PROVISIONING and valid commands move it only through the approved state graph.",
             "A stale version or forbidden transition is rejected; CLOSED is terminal.",
@@ -10160,7 +10160,7 @@
               "id": "TC-002-01-03",
               "name": "Atomic tenant/default-role/admin persistence",
               "type": "integration",
-              "status": "not_run"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E002",
@@ -10209,8 +10209,8 @@
             "BL-002-02"
           ],
           "implementation": "in_progress",
-          "progress": 65,
-          "notes": "Provider-neutral authentication policy, claims mapping, MFA, issuer, audience, lifetime and revocation checks are implemented and exercised with test doubles. Real OIDC/SAML signature and key-discovery adapters, durable sessions and security audit facts remain.",
+          "progress": 70,
+          "notes": "Provider-neutral authentication policy, claims mapping, MFA, issuer, audience, lifetime and revocation checks are implemented and exercised with test doubles. Authentication now issues WeakSet-backed principals; tenant and platform context resolution rejects forged principals and rechecks credential expiry. Real OIDC/SAML signature and key-discovery adapters, durable sessions and security audit facts remain.",
           "acceptance": [
             "Only tokens with valid signature, issuer, audience, expiry and required assurance create a session.",
             "Session expiry and revocation deny subsequent requests without exposing token contents."
@@ -10262,7 +10262,7 @@
           ],
           "implementation": "in_progress",
           "progress": 50,
-          "notes": "Implemented and unit-tested against in-memory doubles only: platform permission catalog from the API spec, deny-by-default tenant-scoped evaluator with live role lookup (revocation applies on the next command; workload principals need explicit scopes), fail-closed ABAC narrowing, role assignment commands (no self-change), and an Audit & Governance approval aggregate (PENDING/APPROVED/REJECTED/EXPIRED/CANCELLED, separation of duties, distinct approvers, exact action/resource/version matching, version CAS) with handlers requiring an interactive MFA principal and committing decision, audit and outbox event in one unit of work. Both tests stay partial: the matrix covers a fixture, not a reviewed permission matrix for all 12 personas, and no PostgreSQL adapter, RLS or immutable audit store exists. Remaining: persistence adapters, ingress permission declaration, approval expiry sweeper, ApprovalPolicy management, platform-role scoping and replacing the platform authorizer port, denial/approval-latency metrics, UI.",
+          "notes": "Implemented and unit-tested against in-memory doubles: platform permission catalog from the API spec, deny-by-default tenant-scoped evaluator with live role lookup (revocation applies on the next command; workload principals need explicit scopes), fail-closed ABAC narrowing, role assignment commands (no self-change), and an Audit & Governance approval aggregate (PENDING/APPROVED/REJECTED/EXPIRED/CANCELLED, separation of duties, distinct approvers, exact action/resource/version matching, version CAS) with handlers requiring an interactive MFA principal and committing decision, audit and outbox event in one unit of work. The foundation migration creates RLS-protected tenant_role, tenant_role_assignment and approval_policy tables, but role administration and approvals still have no PostgreSQL repository adapters. Both tests stay partial: the matrix covers a fixture rather than a reviewed matrix for all 12 personas, and approval_request persistence is absent. Remaining: repository adapters and integration tests, ingress permission declaration, approval expiry sweeper, ApprovalPolicy management, platform-role scoping and replacing the platform authorizer port, denial/approval-latency metrics, UI.",
           "acceptance": [
             "Permissions are tenant-scoped and deny by default.",
             "A proposer cannot approve their own governed request; an authorized second actor can approve it atomically.",
@@ -10542,8 +10542,8 @@
             "BL-002-04"
           ],
           "implementation": "in_progress",
-          "progress": 65,
-          "notes": "Workload tenant, audience and operation-scope validation, down-scoping and interactive-session separation are implemented. The production signed-token or mTLS verifier, credential issuance and rotation remain.",
+          "progress": 70,
+          "notes": "Workload tenant, audience and operation-scope validation, down-scoping and interactive-session separation are implemented. Authentication issues unforgeable-by-structure principals and context resolution rechecks expiry. The production signed-token or mTLS verifier, credential issuance and rotation remain.",
           "acceptance": [
             "Each worker uses a short-lived workload identity scoped to its required tenant and operations.",
             "A workload identity cannot create an interactive session or exceed its declared audience."
@@ -35134,8 +35134,8 @@
             "BL-017-01"
           ],
           "implementation": "in_progress",
-          "progress": 45,
-          "notes": "Shared platform/audit package implemented and unit-tested: immutable deep-frozen AuditEvent stamped only from the trusted tenant or platform context, deny-by-default per-target allow-list snapshots with secret-like field names unlistable and values redacted, SHA-256 evidence hash with tamper verification, an append-only writer port, failure that blocks the command and pages operators, and a permissioned, tenant-scoped, paged audit reader whose reads are themselves audited. Tenant lifecycle, role administration, approval and dead-letter resolution commands now write through it in the same unit of work. Both tests stay partial: atomicity and immutability are modeled by an in-memory double, and database-privilege immutability (no UPDATE/DELETE grant), RLS and the audit_event table do not exist yet. Remaining: PostgreSQL adapter, migration and grants, hash chaining or anchoring decision, retention policy (jurisdiction decision pending), audit:read wiring at ingress, command metadata capture (reason, approval id) at the API, other modules adopting the recorder, audit-write-failure paging integration, log/trace secret scan gate.",
+          "progress": 55,
+          "notes": "Shared platform/audit package implements immutable deep-frozen events stamped only from trusted context, deny-by-default allow-list snapshots with redaction, SHA-256 evidence hashes, failure propagation/alerting and a permissioned tenant-scoped reader whose reads are audited. Tenant lifecycle, role administration, approval and dead-letter commands use it. The first PostgreSQL migration adds an RLS-protected audit_event table and grants the application role INSERT only; tenant lifecycle integration tests prove audit and mutation commit or roll back together. Both roadmap tests remain partial because UPDATE/DELETE denial is not yet an explicit database integration test, other material-command adapters remain in-memory, and the audit reader has no PostgreSQL adapter. Remaining: immutable-privilege test, audit reader adapter and paging integration, hash-chain/anchoring decision, retention policy, audit:read ingress wiring, command metadata capture, wider module adoption, paging on write failure and log/trace secret-scan gate.",
           "acceptance": [
             "Every material mutation records actor, action, reason, correlation and safe before/after evidence in the same transaction.",
             "Application roles cannot update or delete audit rows.",

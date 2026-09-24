@@ -1,82 +1,122 @@
 # Codex implementation handover prompt
 
-Copy everything below the divider into Codex with the working directory set to the repository root.
+Copy everything below the divider into Codex with the working directory set to the repository root (the folder containing `package.json`).
 
 ---
 
-You are continuing implementation of the Sintius AI-native Subscription and Revenue Platform. Work as a production implementation agent: inspect before editing, preserve traceability, implement one bounded tranche with tests, run the gate, and report only what you proved.
+You are continuing implementation of the **Sintius AI-native Subscription and Revenue Platform**. Work as a production implementation agent: inspect before editing, preserve traceability, implement one bounded tranche at a time with tests, run the gate, and report only what you proved. Phase 0 unit-level foundations are done; what remains is mostly persistence, ingress and decisions that need the Product Owner.
 
-## 1. Read first
+## 1. Read first (in this order)
 
-The governing rules live in `HANDOVER_PROMPT_CLAUDE_CODE.md` (repo root). It is tool-agnostic; treat it as binding. Read it fully, then read, in order: `README.md`, `docs/CANONICAL_SPEC_INDEX.md`, `docs/implementation/README.md`, `docs/implementation/phase-0-backlog.md`, and the coding and testing standards it lists. Do not restart discovery or regenerate the backlog.
+1. `HANDOVER_PROMPT_CLAUDE_CODE.md` (repo root). It is tool-agnostic and binding: ground-truth precedence, traceability chain, generated-file rules, reporting format.
+2. `README.md`, `docs/CANONICAL_SPEC_INDEX.md`, `docs/implementation/README.md`, `docs/implementation/phase-0-backlog.md`, `docs/pre-implementation/23-coding-standards.md`, `docs/pre-implementation/24-testing-strategy.md`.
+3. The domain sources for whatever you touch (for example `docs/pre-implementation/14-event-taxonomy.md` for events, `15-security-architecture.md` for audit and authorization, `16-multi-tenancy-architecture.md` for RLS, `13-api-specification.md` for API and idempotency, `07-data-model-erd.md` for tables).
 
-Key non-negotiables from that file:
-- Ground-truth precedence: master specification, then canonical index, decision ledger, generated registers, detailed specs, then code.
-- Never hand-edit generated files. Change `docs/implementation/implementation-roadmap-data.js` (durable status) or the generator inputs, then run `npm run backlog:generate`.
+Do not restart discovery or regenerate a smaller backlog.
+
+**Non-negotiables**
+- Ground-truth precedence: master specification, canonical index, decision ledger, generated registers, detailed specs, then code.
+- Never hand-edit generated files. Edit `docs/implementation/implementation-roadmap-data.js` (durable status) or the generator inputs, then run `npm run backlog:generate`.
 - Keep three statements separate in every report: "Backlog traceability: complete", "Implementation coverage: incomplete", "Automated execution: only what actually ran".
-- A mapped requirement is not implemented; a planned test is not a passing test. Never claim 100% from mapping percentages.
-- Do not reopen resolved decisions (TypeScript on Node.js 24 LTS, PostgreSQL, modular monolith with workers, transactional outbox/inbox, REST/OpenAPI, US/USD MVP). Open spikes and decisions (SPIKE-02/03/05/06, Stripe scope, AI autonomy) need a written proposal and Product Owner confirmation; do not silently choose.
+- A mapped requirement is not implemented. A planned test is not a passing test. Never claim 100% from mapping percentages. Implementation evidence is 0 of 1,335 requirements; no durable evidence overlay exists yet for source-derived stories.
+- Do not reopen resolved decisions: TypeScript on Node.js 24 LTS, PostgreSQL, modular monolith with workers, transactional outbox/inbox, REST/OpenAPI, US/USD MVP.
+- Open decisions and spikes (SPIKE-02 decimal/money, SPIKE-03 ID scheme, SPIKE-05 usage throughput, SPIKE-06 rounding, Stripe scope, AI autonomy and identity-provider choices) need a written proposal and Product Owner confirmation. Do not silently choose. Local PostgreSQL execution is resolved as Docker Compose with PostgreSQL 17.
+- Never mark a roadmap test `passing` unless the whole named behavior was demonstrated. A pure aggregate plus an in-memory double justifies `partial`, not `passing`.
 
-## 2. Environment notes
+## 2. Environment and repository
 
-- Windows; commands used so far: `npm.cmd run check`, `npm.cmd test`, `npm.cmd run backlog:generate`. On other shells use `npm`.
-- `npm run check` = check:architecture, check:roadmap, check:requirements, test.
-- Code style: ESM, zero runtime dependencies, erasable TypeScript only (no enums, namespaces or parameter properties; use `import type`, `#private` fields), tests run natively with `node --test tests/all.test.ts`. Every new test file must be imported from `tests/all.test.ts`.
-- Modules may not import other modules' internals; `tools/architecture-lint` validates each `module.json` (ownedTables, publishedEvents, allowedModuleDependencies).
-- Baseline at handover: `npm run check` passes, 116 of 116 tests. Run it before editing and confirm.
+- Windows. Use `npm.cmd run check`, `npm.cmd test`, `npm.cmd run check:postgres`, `npm.cmd run backlog:generate` (use `npm` on other shells). `check` = architecture, roadmap, requirement coverage, unit tests and PostgreSQL integration tests.
+- Code style: ESM and erasable TypeScript only (no enums, namespaces, parameter properties; use `import type`, `#private` fields, `import.meta.dirname`). Node runs TypeScript directly. Runtime dependency `pg` is pinned for PostgreSQL. Unit tests are imported from `tests/all.test.ts`; database integration tests stay in the explicit `test:postgres` suite so `npm test` remains usable without Docker.
+- **There is no type checker.** `tsc` is not installed and Node only strips types, so type errors are not caught by `npm run check`. Propose a TypeScript dev dependency to the Product Owner rather than adding it silently.
+- Modules must not import other modules' internals. `tools/architecture-lint` validates each `modules/*/module.json` (ownedTables, publishedEvents, allowedModuleDependencies). Shared code lives in `platform/`.
+- Git: branch `master`, remote `origin` = `https://github.com/Sathyanarayan-Kiran/Sintius.git`. Latest commit `64d1794`. Commit and push only when the user asks.
+- GitHub push protection scans for secret patterns. Do not put literal secret-shaped strings (for example `sk_test_...`) in source or tests, even fake or documented ones; build them at runtime (`"sk_" + "test_..."`). History was rewritten once to remove one; a local branch `backup-before-secret-fix` still holds the flagged string and must never be pushed.
+- Git prints many "LF will be replaced by CRLF" warnings on this machine; they are harmless.
+- Local database: Docker Compose runs PostgreSQL 17 on `127.0.0.1:54329`; `db:up` waits for health, `db:migrate` applies checksum-protected forward-only migrations, and `db:down` retains the named volume. Compose trust authentication is strictly local-development configuration.
+- Baseline: `npm run check` passes with **119 unit tests plus 4 PostgreSQL integration tests (123 total)**. Run it before editing and confirm.
 
-## 3. What exists now (verify by reading, do not trust this list blindly)
+## 3. What exists (verify by reading; do not trust this list blindly)
 
-- `platform/problem-model` (P0-002 / US-BL-001-05): RFC 7807/9457 problems, frozen code catalog (`catalog.ts`), trace IDs, redaction, error boundary. Every `problem({ code })` literal in the repo must be registered in the catalog; a repo-scan test enforces it. Adding a code means updating the catalog and the golden test.
-- `platform/tenant-context` (P0-001 / US-BL-001-01): trusted tenant context via AsyncLocalStorage, only resolver-issued contexts accepted, nested tenant/actor switching rejected, tenant identity in command input rejected (fail closed), tenant-scoped cache keys, tenant-bound transaction port, and `PlatformCommandContext` for platform-scoped commands.
-- `platform/event-envelope`: CloudEvents-style envelope conforming to `docs/pre-implementation/contracts/events/envelope.schema.json`; tenant, actor and correlation come only from trusted scope; payload may not restate tenant identity. Event id is a working default `evt_<uuid>` pending SPIKE-03.
-- `modules/identity-tenant` (P0-003 / US-BL-002-01): pure tenant aggregate (`domain/tenant.ts`) plus application layer (`application/ports.ts`, `application/tenant-commands.ts`). Handlers: provision, activate, suspend, reactivate, close. Authorize first, then one unit of work writing tenant, default administrator role, initial administrator membership, audit record and outbox envelope.
-- `modules/identity-tenant` authentication slice (P0-004 / US-BL-002-02 and US-BL-002-04): provider-neutral verifier, policy and revocation ports plus interactive OIDC/SAML and workload authentication policy. It enforces mechanism, issuer, audience, expiry/not-before, MFA, revocation, tenant binding, workload operation scopes and separation from interactive sessions. Authenticated credential/audience/scope data propagates into tenant and platform contexts, and nested context replacement cannot change it. Tests use a verifier test double; no production cryptographic/provider adapter or durable session store exists.
-- P0-005 / US-BL-002-03, split by ownership. `modules/identity-tenant`: `domain/authorization.ts` (frozen permission catalog, deny-by-default `effectivePermissions`, fail-closed ABAC `constraintsSatisfied`), `application/authorization.ts` (`createTenantAuthorizer` with live role lookup so revocation applies on the next command; workload principals need explicit scopes; ABAC only narrows; `createRoleAdministration` requiring `tenant:role:assign`, no self-change), ports in `authorization-ports.ts`. `modules/audit-governance` (owns `approval_request`; `approval_policy` stays with identity-tenant and is read through a port): `domain/approval.ts` (PENDING/APPROVED/REJECTED/EXPIRED/CANCELLED, separation of duties, distinct approvers, exact action/resource/version match, version CAS, cancel, expire) and `application/approval-commands.ts` (propose/decide/cancel; deciding needs an interactive principal with MFA; atomic decision + audit + outbox). `TenantContext` and `PlatformCommandContext` now carry `assurance`. Test doubles: `identity-tenant/tests/in-memory-security.ts`, `audit-governance/tests/in-memory-approvals.ts`.
-- `platform/idempotency` (P0-006 / US-BL-001-02): `canonical.ts` (deterministic hashing), `ports.ts` (`IdempotencyStore` atomic-claim contract, maintenance and persistence ports), `executor.ts` (`createIdempotentExecutor`: validates key and scope, rejects tenant identity in payload, authorizes BEFORE lookup, claim then work then complete in one transaction, replay/409/in-progress mapping). Module unit-of-work types must expose an `idempotency: IdempotencyStore`. `tests/in-memory-idempotency.ts` is a TEST DOUBLE that models per-key serialization.
-- `platform/outbox` (P0-007 / US-BL-001-03): `ports.ts` (`OutboxWriter`, `OutboxStore` lease contract, `EventPublisher`, `InboxStore`), `dispatcher.ts` (`createOutboxDispatcher`, `defaultRetryDelaySeconds`), `inbox.ts` (`createIdempotentConsumer`). `tests/in-memory-outbox.ts` is a TEST DOUBLE. The existing modules still write to their own local outbox-writer types; they are structurally compatible with `OutboxWriter` but not yet wired to it.
-- `platform/audit` (P0-008 / US-BL-017-01): `model.ts` (`AuditEvent`, evidence hash, `verifyAuditEvent`), `policy.ts` (`createAuditPolicy` deny-by-default allow-lists, `toSafeSnapshot`), `recorder.ts` (`createAuditRecorder`: `recordForCurrentContext`, `recordForPlatformCommand`; failure propagates so the transaction rolls back and `onWriteFailure` alerts), `reader.ts` (`createAuditReader`, permissioned, tenant-scoped, self-audited). Modules export their audit field lists (`TENANT_AUDIT_FIELDS`, `ROLE_AUDIT_FIELDS`, `APPROVAL_AUDIT_FIELDS`, `OUTBOX_AUDIT_FIELDS`) which the app root composes into one policy; module unit-of-work types expose `audit: AuditWriter`. `tests/in-memory-audit.ts` is a TEST DOUBLE.
-- The toolchain has no type checker (no `tsc`); Node only strips types, so type errors are NOT caught by `npm run check`. Adding one is worth doing before the codebase grows.
-- `modules/identity-tenant/tests/in-memory-persistence.ts` is a TEST DOUBLE. It is not evidence of PostgreSQL atomicity.
+Most platform ports below are unit-tested against **in-memory test doubles**. The identity-tenant lifecycle is the exception: it has a real PostgreSQL adapter and integration evidence for transactions, forced RLS, rollback and concurrent compare-and-set. Do not generalize that evidence to idempotency, dispatcher/inbox, approval or audit-reader adapters that do not yet exist.
 
-## 4. Durable status at handover (in `docs/implementation/implementation-roadmap-data.js`)
+### platform/problem-model (P0-002 / US-BL-001-05, epic SUB-E001)
+RFC 7807/9457 problems with a frozen, contract-tested code catalog (`src/catalog.ts`), trace IDs, redaction (`redactSensitiveText`), and an error boundary. **Every `problem({ code })` literal must be registered in the catalog and the golden test in `tests/problem-model.test.ts`**; a repo-scan test enforces this. Tests TC-001-05-01/02 are `passing`.
 
-- US-BL-001-05: tests TC-001-05-01/02 passing, progress 80.
-- US-BL-001-01: progress 85; TC-001-01-03 (trusted tenant reaches a real transaction) is `not_run`.
-- US-BL-002-01: progress 60; TC-002-01-03 (atomic tenant/default-role/admin persistence) is `not_run`.
-- US-BL-002-02: progress 65; both roadmap tests are `partial`. Provider-neutral claim enforcement is tested, but real OIDC/SAML signature/key discovery, durable sessions and security audit facts remain.
-- US-BL-002-04: progress 65; workload audience/scope enforcement is `partial`, while workload/interactive identity separation is `passing`. A production signed-token or mTLS adapter, issuance and rotation remain.
-- The authentication slice traces through US-MSR-080-01 to `MSR-080-3B6F4B3FE4` (OIDC/OAuth2), `MSR-080-A555453F8D` (SAML) and `MSR-080-477F636C27` (MFA). Do not mark all of US-MSR-080-01 implemented: it also contains authorization, encryption, key management, secret-management and rate-limiting requirements outside this tranche.
-- Implementation evidence overall: 0 of 1,335 requirements. No durable evidence overlay exists yet for source-derived stories; create one before claiming any of them implemented.
+### platform/tenant-context (P0-001 / US-BL-001-01)
+Trusted principal and tenant context boundaries: authentication issues WeakSet-backed principals after credential verification; tenant and platform resolvers reject principal-shaped object literals and recheck credential expiry before issuing a context. Tenant contexts use AsyncLocalStorage; only resolver-issued contexts are accepted; nested tenant, actor, kind, assurance, credential, audience or scope switching is rejected; tenant identity in command input is rejected fail-closed (depth-limited); tenant-scoped cache keys and a tenant-bound transaction port are present. `PlatformCommandContext` covers commands for which no tenant exists yet, such as provisioning. Both contexts carry `assurance`, `credentialId`, `audiences` and `scopes`.
 
-- US-BL-002-03: progress 50; both roadmap tests `partial` (in-memory doubles only; the allow/deny matrix covers a fixture, not a reviewed 12-persona matrix). Remaining: PostgreSQL adapters and RLS, ingress permission declaration, ApprovalPolicy management, approval expiry sweeper, platform-role scoping and replacing the `PlatformAuthorizer` port, metrics.
+### platform/event-envelope
+CloudEvents-style envelope conforming to `docs/pre-implementation/contracts/events/envelope.schema.json`. Tenant, actor, correlation and causation come only from a trusted `EventScope`; payload may not restate tenant identity. Event id default `evt_<uuid>` pending SPIKE-03.
 
-### Known gaps found in review
+### platform/idempotency (P0-006 / US-BL-001-02)
+Deterministic canonical hashing, `IdempotencyStore` atomic-claim contract, and `createIdempotentExecutor`: validates key (16 to 128 URL-safe chars) and scope, rejects tenant identity in payload, **authorizes before any lookup**, claim then work then complete in one transaction, replay returns the stored response, different payload gives 409, in-flight gives `request_in_progress`, default retention 7 days. Module unit-of-work types must expose `idempotency: IdempotencyStore`. **The tenant lifecycle commands are not yet wrapped in it.**
 
-- `resolveTenantContext` / `resolvePlatformCommandContext` accept any structurally valid `AuthenticatedPrincipal`; nothing proves it came from `createAuthenticator`. Consider issuing principals via a WeakSet-backed constructor (as done for contexts) before wiring HTTP ingress.
-- `AuthenticatedPrincipal.expiresAt` is carried but not enforced at context resolution.
+### platform/outbox (P0-007 / US-BL-001-03)
+`OutboxWriter`, `OutboxStore` (lease contract: at most one lease per aggregate stream, head-of-line blocking), `EventPublisher`, `InboxStore`; `createOutboxDispatcher` (ordered delivery, exponential backoff 5s doubling to 15 min, redacted errors, dead-lettering including crash-looping events, lease-loss handling); `createIdempotentConsumer` (dedup per consumer and tenant, rolled back with the handler); `createDeadLetterOperations` (operator requeue or skip).
+**Dead-letter policy (a design choice of mine; confirm with the Product Owner):** a dead-lettered event blocks later events of the same aggregate (order over liveness); the dispatcher never skips by itself; an authorized operator must requeue or skip with a mandatory reason; skip keeps the envelope as evidence and unblocks the stream; resolution needs `outbox:dead_letter:resolve` and is audited against the affected tenant in the same transaction. `OutboxStats.blockedStreams` and `oldestDeadLetterAgeSeconds` are the alert signals. Modules still use their own structurally-compatible outbox-writer types rather than importing `OutboxWriter`.
 
-- US-BL-001-02: progress 50; all three roadmap tests `partial`. Remaining: PostgreSQL unique-index adapter and migration, HTTP ingress (header, Retry-After), failed-final storage, per-tenant retention source, cleanup job, metrics. The tenant lifecycle commands are not yet wrapped in the executor.
+### platform/audit (P0-008 / US-BL-017-01)
+`AuditEvent` is deep-frozen and stamped only from trusted context, carries a SHA-256 `evidenceHash` (`verifyAuditEvent`). `createAuditPolicy` is a deny-by-default per-target allow-list (secret-like field names cannot be allow-listed); `toSafeSnapshot` redacts. `createAuditRecorder` (`recordForCurrentContext`, `recordForPlatformCommand`): a failed append propagates so the transaction rolls back and `onWriteFailure` alerts. `createAuditReader`: permissioned (`authorize` callback), tenant-scoped, paged (limit max 500), and every read is itself audited. Modules export their audit field lists (`TENANT_AUDIT_FIELDS`, `ROLE_AUDIT_FIELDS`, `APPROVAL_AUDIT_FIELDS`, `OUTBOX_AUDIT_FIELDS`); the app root composes them into one policy. No hash chaining (decision open).
 
-- US-BL-001-03: progress 45; both roadmap tests `partial`. Dead-letter policy (decided): a dead-lettered event blocks later events of the same aggregate, the dispatcher never skips by itself, and `createDeadLetterOperations` lets an authorized operator requeue or skip with a mandatory reason and operator id (skip keeps the envelope, unblocks the stream, and is recorded on the entry). `OutboxStats.blockedStreams` and `oldestDeadLetterAgeSeconds` are the alert signals. Remaining: a permission-catalog entry and audit linkage for dead-letter resolution (P0-005/P0-008), consumer-side `aggregate_version` gap detection after a skip, PostgreSQL adapter (SKIP LOCKED), broker adapter (undecided), schema-registry validation, consumer DLQ, dispatcher runtime and lease renewal, dispatcher RLS role, metrics export, retention.
+### modules/identity-tenant
+- P0-003 / US-BL-002-01: pure tenant aggregate (`domain/tenant.ts`) and commands (`application/tenant-commands.ts`): provision, activate, suspend, reactivate, close. Authorize first (deny-by-default `PlatformAuthorizer` port), then one unit of work writing tenant, default `tenant_administrator` role, initial administrator membership, audit event and outbox envelope. Reasons required for suspend and close. `infrastructure/postgres/tenant-persistence.ts` is the real adapter; the migration enables and forces tenant RLS and grants the application role only INSERT on audit/outbox. The PostgreSQL suite proves commit, rollback, tenant A/B isolation and lifecycle CAS concurrency.
+- P0-004 / US-BL-002-02 and US-BL-002-04 (written by you earlier): provider-neutral authentication (`application/authentication*.ts`): OIDC/SAML and workload policy; enforces mechanism, issuer, audience, lifetime, MFA, revocation, tenant binding, workload scopes, and workload/interactive separation. Uses a verifier test double; **no production cryptographic adapter, session store or key discovery exists.**
+- P0-005 / US-BL-002-03: `domain/authorization.ts` (frozen permission catalog from `13-api-specification.md` section 4 plus tenant, approval and dead-letter permissions; deny-by-default `effectivePermissions`; fail-closed ABAC `constraintsSatisfied` that only narrows), `application/authorization.ts` (`createTenantAuthorizer` with live role lookup so revocation applies on the next command; workload principals need the permission as an explicit scope; `createRoleAdministration` requires `tenant:role:assign` and blocks changing your own roles, which is my addition beyond the spec). Default administrator role holds only `tenant:role:manage` and `tenant:role:assign`.
 
-- US-BL-017-01: progress 45; both roadmap tests `partial`. Remaining: PostgreSQL adapter, migration and grants (no UPDATE/DELETE), hash chaining decision, retention (jurisdiction decision pending), ingress wiring for `audit:read` and command metadata, other modules adopting the recorder, paging integration, log/trace secret-scan gate.
+### modules/audit-governance
+Owns `approval_request` (Audit & Governance, per the canonical sources); `approval_policy` stays with identity-tenant and is read through a port. `domain/approval.ts`: PENDING, APPROVED, REJECTED, EXPIRED, CANCELLED; separation of duties per policy; distinct approvers; exact action/resource/version matching; version compare-and-set; cancel (maker only); expire (time-driven). `application/approval-commands.ts`: propose, decide, cancel. Deciding needs `approval:request:decide`, an interactive principal and MFA. Decision, audit event and outbox event commit in one unit of work.
 
-## 5. Recommended next tranche
+## 4. Durable status (in `docs/implementation/implementation-roadmap-data.js`)
+
+| Story | Epic | Progress | Tests | Main remaining work |
+|---|---|---|---|---|
+| US-BL-001-05 (P0-002) | SUB-E001 | 80 | 2 `passing` | HTTP ingress adapter, ingress correlation propagation, metrics, UI copy |
+| US-BL-001-01 (P0-001) | SUB-E001 | 90 | TC-001-01-03 `partial` | PostgreSQL/RLS binding is proven; worker/job context and real cache adapter remain |
+| US-BL-001-02 (P0-006) | SUB-E001 | 50 | 3 `partial` | PostgreSQL unique-index adapter and migration, HTTP header and Retry-After, failed-final storage, retention source, cleanup job, metrics |
+| US-BL-001-03 (P0-007) | SUB-E001 | 50 | 2 `partial` | outbox table/atomic insert proven; PostgreSQL leasing/inbox adapter, broker, schema validation, runtime, gap detection, metrics and retention remain |
+| US-BL-001-04 (P0-009) | SUB-E001 | 25 | 2 `partial` | seven foundation tables use forced RLS; extend to all tenant tables and automate the complete A/B CRUD matrix |
+| US-BL-002-01 (P0-003) | SUB-E002 | 85 | 3 `passing` | idempotency wrapper, reviewed platform RBAC, HTTP ingress |
+| US-BL-002-02 (P0-004) | SUB-E002 | 70 | 2 `partial` | real OIDC/SAML signature and key discovery, durable sessions, security audit facts |
+| US-BL-002-04 (P0-004) | SUB-E002 | 70 | 1 `partial`, 1 `passing` | signed-token or mTLS adapter, issuance and rotation |
+| US-BL-002-03 (P0-005) | SUB-E002 | 50 | 2 `partial` | PostgreSQL adapters and RLS, ingress permission declaration, ApprovalPolicy management, expiry sweeper, platform-role scoping, replace `PlatformAuthorizer` port, metrics |
+| US-BL-017-01 (P0-008) | SUB-E017 | 55 | 2 `partial` | audit table/INSERT-only grant and lifecycle atomicity proven; explicit privilege test, reader adapter, retention, ingress, wider adoption and operational gates remain |
+
+Do not mark all of US-MSR-080-01 implemented: it also covers authorization, encryption, key management, secrets and rate limiting outside this work. The authentication slice traces to `MSR-080-3B6F4B3FE4` (OIDC/OAuth2), `MSR-080-A555453F8D` (SAML) and `MSR-080-477F636C27` (MFA).
+
+## 5. Known gaps and design choices to review
+
+Gaps found in review (fix or raise them):
+1. The tenant lifecycle commands are not idempotent-wrapped. Identity-tenant now uses `platform/outbox`'s shared `OutboxWriter`.
+2. The `PlatformAuthorizer` for provisioning and lifecycle is only a deny-by-default port; platform roles are not modeled.
+3. Only three modules' commands audit through the shared recorder plus dead-letter resolution; every future material command must too.
+4. Audit-write-failure paging, the metrics named in the backlog, and the log/trace secret-scan release gate are not built.
+
+Design choices I made that the Product Owner has not confirmed: dead-letter blocks its own stream (section 3); the Idempotency-Key format is lenient (16 to 128 URL-safe characters) whereas the API spec says client-generated UUID; a role administrator cannot change their own assignments; generic approval permissions (`approval:request:propose`, `approval:request:decide`) rather than per-action ones; ABAC constraints are data-driven (`eq`, `in`, `lt`, `lte`, `gt`, `gte`); audit has an evidence hash but no chain.
+
+## 6. What to do next
 
 Do these in order, one bounded tranche at a time, and stop to report after each.
 
-1. **PostgreSQL adapter for identity-tenant (finishes TC-001-01-03 and TC-002-01-03).** Blocked on one decision: how Postgres runs locally and in CI (Docker Compose, testcontainers, or a hosted instance). Propose an option with trade-offs and ask the Product Owner; do not pick silently. Once decided: implement `TenantPersistence`/`TenantUnitOfWork` against real PostgreSQL, the tables owned by identity-tenant (`tenant`, `tenant_identity_provider`, `tenant_role`, `tenant_role_assignment`), migrations, and an integration test proving atomic commit and rollback plus tenant-bound transaction binding. Only then mark those two tests `passing`.
-2. **Finish P0-004 production adapters.** This requires explicit provider/runtime choices for OIDC/JWKS, SAML certificates and workload signed-token or mTLS verification; do not silently select vendors or libraries. Add durable session/revocation persistence and authentication audit facts before changing the two partial roadmap tests to passing.
-3. ~~P0-005~~ done at unit level; production adapters ride with item 1.
-4. ~~P0-006~~ done at unit level. ~~P0-007~~ done at unit level. ~~P0-008~~ done at unit level. **P0-009** RLS and mandatory repository filters and **P0-010** the proof command both need a real PostgreSQL to be meaningful, so the PostgreSQL execution-mode decision is now the blocker for all remaining Phase 0 work, **P0-008** audit, **P0-009** row-level security, **P0-010** proof command. Specs are in `docs/implementation/phase-0-backlog.md`.
+**A. Decision-independent work**
+1. Wrap the tenant lifecycle commands in `createIdempotentExecutor`; the shared `OutboxWriter` migration is already complete.
+2. Consumer-side `aggregate_version` gap detection helper for use after a dead-letter skip.
+3. Propose (do not silently add) a type-check step, and propose a permission or role matrix review for the 12 personas.
+4. An HTTP ingress adapter design note for `apps/api` (correlation and causation IDs, `Idempotency-Key`, `Retry-After`, problem+json). Build it only if the Product Owner approves the framework choice; the repo has no web framework yet.
 
-If the PostgreSQL and production identity-provider decisions are not yet made, the remaining decision-independent work is small (a type-check step, wiring modules to `OutboxWriter`, ingress adapters); record both blockers.
+**B. PostgreSQL tranche (Docker Compose decision resolved)**
+1. **Complete for tenant lifecycle:** migration and adapter for identity-tenant, transaction-local tenant binding, forced RLS, repository filters, commit/rollback and CAS concurrency evidence. TC-002-01-03 is `passing`; TC-001-01-03 is conservatively `partial` until the real cache and worker/job paths are integrated.
+2. Next add adapters for idempotency (unique index and a real concurrent-race test), outbox (SKIP LOCKED leasing), audit (no UPDATE or DELETE grant, tested), then approvals.
+3. Extend **P0-009** (`BL-001-04`, `BL-017-03`) across every tenant-owned table and add the full tenant A/B CRUD matrix. Current proof covers the seven tables in the first migration, but the roadmap story is broader.
+4. Build **P0-010**, the Phase 0 proof command: establish trusted authenticated context, execute an idempotent mutation twice with one key, and prove one mutation, one audit event and one outbox event committed atomically.
 
-## 6. Definition of done for any tranche
+**C. Blocked on identity-provider choices**
+Production OIDC/JWKS, SAML certificate and workload signed-token or mTLS adapters, durable session and revocation storage, authentication audit facts. Propose options; do not select vendors or libraries silently.
 
-- Implementation plus tests that fail without the implementation.
-- New problem codes registered in the catalog and golden test; new test files imported from `tests/all.test.ts`.
+## 7. Definition of done for any tranche
+
+- Implementation plus tests that fail without the implementation (say so if you could not confirm this).
+- New problem codes registered in the catalog and golden test; new test files imported from `tests/all.test.ts`; new module tables and events declared in `module.json`.
 - Roadmap status updated only to the level proven; `npm run backlog:generate` run when inputs changed; `npm run check` green.
-- README "Current implementation slice" updated if scope changed.
-- Final report contains: story and epic IDs with MSR IDs, files changed, exact commands run with pass/fail counts, status changes made, what remains, and decisions needed. Include the three-line separation from section 1. Do not claim anything you did not run.
+- README "Current implementation slice" updated if scope changed; this prompt updated if the state changed.
+- Before any commit: `git status`, review what is staged, scan for secret-shaped strings.
+- Final report contains: story and epic IDs with MSR IDs, files changed, exact commands run with pass/fail counts, roadmap status changes, what remains, decisions needed, and the three-line separation from section 1. Do not claim anything you did not run.

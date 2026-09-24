@@ -1,5 +1,5 @@
 import type { AuditWriter } from "../../../platform/audit/src/index.ts";
-import type { EventEnvelope } from "../../../platform/event-envelope/src/index.ts";
+import type { OutboxWriter } from "../../../platform/outbox/src/index.ts";
 import type { ActorId, PlatformCommandContext, TenantId } from "../../../platform/tenant-context/src/index.ts";
 import type { TenantSnapshot } from "../domain/tenant.ts";
 
@@ -46,20 +46,17 @@ export interface TenantMembershipRepository {
   insertInitialAdministrator(record: Readonly<InitialAdministratorRecord>): Promise<void>;
 }
 
-export interface TenantOutboxWriter {
-  append(envelope: Readonly<EventEnvelope>): Promise<void>;
-}
-
 /** Repositories bound to one database transaction. */
 export interface TenantUnitOfWork {
   readonly tenants: TenantRepository;
   readonly roles: TenantRoleRepository;
   readonly memberships: TenantMembershipRepository;
   readonly audit: AuditWriter;
-  readonly outbox: TenantOutboxWriter;
+  readonly outbox: OutboxWriter;
 }
 
 export interface TenantTransactionScope {
+  readonly tenantId: TenantId;
   readonly correlationId: string;
   readonly causationId?: string;
 }

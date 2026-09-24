@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlatformProblem } from "../../problem-model/src/index.ts";
+import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import {
   TenantScopedCache,
   actorId,
@@ -24,12 +25,7 @@ const tenantA = tenantId("tenant_A");
 const tenantB = tenantId("tenant_B");
 
 function principalFor(memberships: readonly TenantId[], actor = "user_1", kind: "interactive" | "workload" = "interactive") {
-  return Object.freeze({
-    actorId: actorId(actor),
-    kind,
-    tenantMemberships: Object.freeze([...memberships]),
-    assurance: kind === "workload" ? ("workload" as const) : ("mfa" as const),
-  });
+  return testPrincipal(memberships, { actor, kind });
 }
 
 function contextFor(tenant: TenantId, correlationId = "corr_1", actor = "user_1", causationId?: string) {

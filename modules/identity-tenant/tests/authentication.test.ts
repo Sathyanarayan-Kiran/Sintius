@@ -55,7 +55,7 @@ function claims(overrides: Partial<VerifiedCredentialClaims> = {}): VerifiedCred
     tenantIds: Object.freeze([tenantA]),
     authenticationMethods: Object.freeze(["password", "mfa"]),
     scopes: Object.freeze([]),
-    expiresAt: "2026-09-24T12:05:00.000Z",
+    expiresAt: "2099-01-01T00:00:00.000Z",
     ...overrides,
   });
 }

@@ -1,6 +1,7 @@
 import { problem } from "../../../platform/problem-model/src/index.ts";
 import {
   actorId,
+  issueAuthenticatedPrincipal,
   tenantId,
   type AuthenticatedPrincipal,
   type TenantId,
@@ -147,7 +148,7 @@ export function createAuthenticator(dependencies: AuthenticationDependencies) {
     const { policy, claims } = await verify(input, ["oidc", "saml"]);
     if (policy.requireMfa && !claims.authenticationMethods.includes("mfa")) assuranceInsufficient(input.correlationId);
     const memberships = normalizedTenants(claims, input.correlationId);
-    return Object.freeze({
+    return issueAuthenticatedPrincipal({
       actorId: actorId(claims.subject),
       kind: "interactive" as const,
       tenantMemberships: memberships,
@@ -174,7 +175,7 @@ export function createAuthenticator(dependencies: AuthenticationDependencies) {
     ) {
       workloadScopeDenied(input.correlationId);
     }
-    return Object.freeze({
+    return issueAuthenticatedPrincipal({
       actorId: actorId(claims.subject),
       kind: "workload" as const,
       tenantMemberships: memberships,

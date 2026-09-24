@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 import { PlatformProblem } from "../../problem-model/src/index.ts";
+import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import {
   TenantScopedCache,
-  actorId,
   defineTenantCommand,
   inTenantTransaction,
   resolveTenantContext,
@@ -33,12 +33,7 @@ const dependencies = { newEventId: () => "evt_fixed_1", clock: () => recordedAt 
 function contextFor(tenant: TenantId, options: { kind?: "interactive" | "workload"; causationId?: string } = {}) {
   const kind = options.kind ?? "interactive";
   return resolveTenantContext({
-    principal: Object.freeze({
-      actorId: actorId(kind === "workload" ? "svc_billing" : "user_1"),
-      kind,
-      tenantMemberships: Object.freeze([tenant]),
-      assurance: kind === "workload" ? ("workload" as const) : ("mfa" as const),
-    }),
+    principal: testPrincipal([tenant], { actor: kind === "workload" ? "svc_billing" : "user_1", kind }),
     selectedTenantId: tenant,
     tenantState: "ACTIVE",
     correlationId: "corr_evt_1",

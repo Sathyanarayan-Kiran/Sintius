@@ -1,5 +1,10 @@
 import { problem } from "../../problem-model/src/index.ts";
-import { actorId as toActorId, type ActorId, type AuthenticatedPrincipal } from "./context.ts";
+import {
+  actorId as toActorId,
+  assertIssuedAuthenticatedPrincipal,
+  type ActorId,
+  type AuthenticatedPrincipal,
+} from "./context.ts";
 
 /**
  * Identity of a platform-scoped command, such as provisioning a tenant that does not exist yet.
@@ -12,7 +17,7 @@ export interface PlatformCommandContext {
   readonly correlationId: string;
   readonly causationId?: string;
   readonly assurance: AuthenticatedPrincipal["assurance"];
-  readonly credentialId?: string;
+  readonly credentialId: string;
   readonly audiences: readonly string[];
   readonly scopes: readonly string[];
 }
@@ -26,20 +31,29 @@ export interface ResolvePlatformCommandContextInput {
 }
 
 export function resolvePlatformCommandContext(input: ResolvePlatformCommandContextInput): Readonly<PlatformCommandContext> {
+  assertIssuedAuthenticatedPrincipal(input.principal, input.correlationId);
   if (input.correlationId.trim().length === 0) {
     throw problem({ code: "invalid_trusted_context", detail: "correlationId must not be blank." });
   }
   if (input.causationId !== undefined && input.causationId.trim().length === 0) {
     throw problem({ code: "invalid_trusted_context", detail: "causationId must not be blank." });
   }
+  const expiry = Date.parse(input.principal.expiresAt);
+  if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+    throw problem({
+      code: "authentication_failed",
+      detail: "The authenticated principal is no longer valid.",
+      correlation_id: input.correlationId,
+    });
+  }
   const context: PlatformCommandContext = {
     actorId: toActorId(input.principal.actorId),
     principalKind: input.principal.kind,
     assurance: input.principal.assurance,
     correlationId: input.correlationId,
-    ...(input.principal.credentialId === undefined ? {} : { credentialId: input.principal.credentialId }),
-    audiences: Object.freeze([...(input.principal.audiences ?? [])]),
-    scopes: Object.freeze([...(input.principal.scopes ?? [])]),
+    credentialId: input.principal.credentialId,
+    audiences: Object.freeze([...input.principal.audiences]),
+    scopes: Object.freeze([...input.principal.scopes]),
     ...(input.causationId === undefined ? {} : { causationId: input.causationId }),
   };
   const frozen = Object.freeze(context);

@@ -90,7 +90,7 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
       eventDependencies(now),
     );
     await persistence.runInTransaction(
-      { correlationId: context.correlationId, ...(context.causationId === undefined ? {} : { causationId: context.causationId }) },
+      { tenantId: id, correlationId: context.correlationId, ...(context.causationId === undefined ? {} : { causationId: context.causationId }) },
       async (unitOfWork) => {
         await unitOfWork.tenants.insert(change.tenant);
         await unitOfWork.roles.insertDefaultAdministratorRole({ tenantId: id, roleCode: "tenant_administrator" });
@@ -127,7 +127,7 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
     const now = clock();
 
     return persistence.runInTransaction(
-      { correlationId: context.correlationId, ...(context.causationId === undefined ? {} : { causationId: context.causationId }) },
+      { tenantId: id, correlationId: context.correlationId, ...(context.causationId === undefined ? {} : { causationId: context.causationId }) },
       async (unitOfWork) => {
         const current = await unitOfWork.tenants.findById(id);
         if (current === undefined) {

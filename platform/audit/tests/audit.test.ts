@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlatformProblem } from "../../problem-model/src/index.ts";
+import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import {
-  actorId,
   resolvePlatformCommandContext,
   resolveTenantContext,
   runWithTenantContext,
@@ -24,7 +24,7 @@ const policy = createAuditPolicy({
 
 function contextFor(tenant: TenantId, actor = "user_1", kind: "interactive" | "workload" = "interactive") {
   return resolveTenantContext({
-    principal: Object.freeze({ actorId: actorId(actor), kind, tenantMemberships: Object.freeze([tenant]), assurance: kind === "workload" ? ("workload" as const) : ("mfa" as const) }),
+    principal: testPrincipal([tenant], { actor, kind }),
     selectedTenantId: tenant,
     tenantState: "ACTIVE",
     correlationId: "corr_aud_1",
@@ -172,7 +172,7 @@ test("workload actors and platform commands are attributed from trusted context 
   await runWithTenantContext(contextFor(A, "svc_billing", "workload"), () => store.runInTransaction({}, (uow) => recorder.recordForCurrentContext(uow.audit, change)));
   assert.deepEqual(store.events()[0]!.actor, { id: "svc_billing", kind: "workload" });
 
-  const platform = resolvePlatformCommandContext({ principal: { actorId: actorId("operator_1"), kind: "interactive", tenantMemberships: [], assurance: "mfa" }, correlationId: "corr_plat" });
+  const platform = resolvePlatformCommandContext({ principal: testPrincipal([], { actor: "operator_1" }), correlationId: "corr_plat" });
   await store.runInTransaction({}, (uow) => recorder.recordForPlatformCommand(uow.audit, platform, B, change));
   const last = store.events()[1]!;
   assert.equal(last.tenantId, "tenant_B");

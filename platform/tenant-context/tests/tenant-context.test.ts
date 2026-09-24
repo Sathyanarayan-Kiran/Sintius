@@ -1,16 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlatformProblem, mapErrorToProblemResponse, runAtProblemBoundary } from "../../problem-model/src/index.ts";
-import { actorId, currentTenantContext, resolveTenantContext, runWithTenantContext, tenantId } from "../src/index.ts";
+import { actorId, currentTenantContext, issueAuthenticatedPrincipal, resolvePlatformCommandContext, resolveTenantContext, runWithTenantContext, tenantId } from "../src/index.ts";
+import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 
 const tenantA = tenantId("tenant_A");
 const tenantB = tenantId("tenant_B");
-const principal = Object.freeze({
-  actorId: actorId("user_1"),
-  kind: "interactive" as const,
-  tenantMemberships: Object.freeze([tenantA]),
-  assurance: "mfa" as const,
-});
+const principal = testPrincipal([tenantA]);
 
 test("resolves and propagates immutable trusted context across async work", async () => {
   const context = resolveTenantContext({ principal, selectedTenantId: tenantA, tenantState: "ACTIVE", correlationId: "corr_1" });
@@ -68,4 +64,79 @@ test("tenant context failures map to canonical problem responses carrying the tr
   const missing = mapErrorToProblemResponse((() => { try { currentTenantContext(); } catch (error) { return error; } })(), { correlationId: "corr_ingress_2" });
   assert.equal(missing.status, 500);
   assert.equal(missing.body.code, "tenant_context_missing");
+});
+
+test("principal-shaped literals are rejected by tenant and platform context resolvers", () => {
+  const forged = Object.freeze({
+    actorId: actorId("attacker_1"),
+    kind: "interactive" as const,
+    tenantMemberships: Object.freeze([tenantA]),
+    assurance: "mfa" as const,
+    credentialId: "forged_credential",
+    issuer: "https://attacker.invalid",
+    audiences: Object.freeze(["sintius-test"]),
+    scopes: Object.freeze([]),
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  });
+  assert.throws(
+    () => resolveTenantContext({ principal: forged, selectedTenantId: tenantA, tenantState: "ACTIVE", correlationId: "corr_forged_tenant" }),
+    (error: unknown) => error instanceof PlatformProblem && error.problem.code === "authentication_failed",
+  );
+  assert.throws(
+    () => resolvePlatformCommandContext({ principal: forged, correlationId: "corr_forged_platform" }),
+    (error: unknown) => error instanceof PlatformProblem && error.problem.code === "authentication_failed",
+  );
+});
+
+test("expired issued principals are rejected when tenant and platform contexts are resolved", () => {
+  const expired = issueAuthenticatedPrincipal({
+    actorId: "user_expired",
+    kind: "interactive",
+    tenantMemberships: [tenantA],
+    assurance: "mfa",
+    credentialId: "credential_expired",
+    issuer: "https://identity.test.invalid",
+    audiences: ["sintius-test"],
+    scopes: [],
+    expiresAt: "2000-01-01T00:00:00.000Z",
+  });
+  assert.throws(
+    () => resolveTenantContext({ principal: expired, selectedTenantId: tenantA, tenantState: "ACTIVE", correlationId: "corr_expired_tenant" }),
+    (error: unknown) => error instanceof PlatformProblem && error.problem.code === "authentication_failed",
+  );
+  assert.throws(
+    () => resolvePlatformCommandContext({ principal: expired, correlationId: "corr_expired_platform" }),
+    (error: unknown) => error instanceof PlatformProblem && error.problem.code === "authentication_failed",
+  );
+});
+
+test("principal issuance rejects inconsistent assurance and invalid authority metadata", () => {
+  assert.throws(
+    () => issueAuthenticatedPrincipal({
+      actorId: "user_1",
+      kind: "interactive",
+      tenantMemberships: [tenantA],
+      assurance: "workload",
+      credentialId: "credential_1",
+      issuer: "https://identity.test.invalid",
+      audiences: ["sintius-test"],
+      scopes: [],
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    }),
+    (error: unknown) => error instanceof PlatformProblem && error.problem.code === "authentication_failed",
+  );
+  assert.throws(
+    () => issueAuthenticatedPrincipal({
+      actorId: "user_1",
+      kind: "interactive",
+      tenantMemberships: [tenantA],
+      assurance: "mfa",
+      credentialId: "credential_1",
+      issuer: "https://identity.test.invalid",
+      audiences: [],
+      scopes: [],
+      expiresAt: "not-an-instant",
+    }),
+    (error: unknown) => error instanceof PlatformProblem && error.problem.code === "authentication_failed",
+  );
 });

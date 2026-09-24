@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildEventEnvelopeFor, type EventEnvelope } from "../../event-envelope/src/index.ts";
 import { PlatformProblem } from "../../problem-model/src/index.ts";
+import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import { tenantId } from "../../tenant-context/src/index.ts";
 import { createAuditPolicy, createAuditRecorder, verifyAuditEvent, type AuditEvent } from "../../audit/src/index.ts";
-import { actorId, resolvePlatformCommandContext } from "../../tenant-context/src/index.ts";
+import { resolvePlatformCommandContext } from "../../tenant-context/src/index.ts";
 import { OUTBOX_AUDIT_FIELDS, createDeadLetterOperations, createIdempotentConsumer, createOutboxDispatcher, defaultRetryDelaySeconds, type DeadLetterPersistence, type EventPublisher } from "../src/index.ts";
 import { InMemoryOutbox, type TestUnitOfWork } from "./in-memory-outbox.ts";
 
@@ -69,7 +70,7 @@ function deadLetterKit(outbox: InMemoryOutbox, iso: () => string, authorize: (ac
   const recorder = createAuditRecorder({ policy: createAuditPolicy(OUTBOX_AUDIT_FIELDS), clock: () => new Date(iso()), newId: () => `aud_${++audits}` });
   const operations = createDeadLetterOperations({ persistence, audit: recorder, clock: () => new Date(iso()), authorize: authorize as never });
   const context = resolvePlatformCommandContext({
-    principal: { actorId: actorId("operator_1"), kind: "interactive", tenantMemberships: [], assurance: "mfa" },
+    principal: testPrincipal([], { actor: "operator_1" }),
     correlationId: "corr_dl",
   });
   return { operations, context, auditRows, control };

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlatformProblem } from "../../../platform/problem-model/src/index.ts";
+import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import { actorId, currentTenantContext, resolveTenantContext, runWithTenantContext, tenantId, type TenantId } from "../../../platform/tenant-context/src/index.ts";
 import { createAuditPolicy, createAuditRecorder } from "../../../platform/audit/src/index.ts";
 import { APPROVAL_AUDIT_FIELDS, createApprovalCommands } from "../application/approval-commands.ts";
@@ -33,12 +34,7 @@ function contextFor(
 ) {
   const kind = options.kind ?? "interactive";
   return resolveTenantContext({
-    principal: Object.freeze({
-      actorId: actorId(actor),
-      kind,
-      tenantMemberships: Object.freeze([tenant]),
-      assurance: options.assurance ?? (kind === "workload" ? ("workload" as const) : ("mfa" as const)),
-    }),
+    principal: testPrincipal([tenant], { actor, kind, assurance: options.assurance }),
     selectedTenantId: tenant,
     tenantState: "ACTIVE",
     correlationId: "corr_appr_1",

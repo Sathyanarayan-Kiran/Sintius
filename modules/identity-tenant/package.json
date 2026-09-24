@@ -7,6 +7,7 @@
     ".": "./domain/tenant.ts",
     "./application": "./application/tenant-commands.ts",
     "./authentication": "./application/authentication.ts",
-    "./authorization": "./application/authorization.ts"
+    "./authorization": "./application/authorization.ts",
+    "./postgres": "./infrastructure/postgres/tenant-persistence.ts"
   }
 }

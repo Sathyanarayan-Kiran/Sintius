@@ -15,11 +15,19 @@
   ],
   "scripts": {
     "test": "node --test tests/all.test.ts",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:migrate": "node tools/database/migrate-postgres.mjs",
+    "test:postgres": "node --test modules/identity-tenant/tests/postgres-persistence.test.ts",
+    "check:postgres": "npm run db:up && npm run db:migrate && npm run test:postgres",
     "check:architecture": "node tools/architecture-lint/src/index.ts",
     "check:roadmap": "node tools/validate-roadmap.mjs",
     "requirements:generate": "node tools/requirements/extract-master-requirements.mjs",
     "backlog:generate": "node tools/backlog/normalize-master-backlog.mjs",
     "check:requirements": "node tools/requirements/check-coverage.mjs",
-    "check": "npm run check:architecture && npm run check:roadmap && npm run check:requirements && npm test"
+    "check": "npm run check:architecture && npm run check:roadmap && npm run check:requirements && npm test && npm run check:postgres"
+  },
+  "dependencies": {
+    "pg": "8.23.0"
   }
 }

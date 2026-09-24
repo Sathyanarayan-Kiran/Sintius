@@ -13,11 +13,23 @@ export interface AuthenticatedPrincipal {
   readonly kind: "interactive" | "workload";
   readonly tenantMemberships: readonly TenantId[];
   readonly assurance: "single-factor" | "mfa" | "workload";
-  readonly credentialId?: string;
-  readonly issuer?: string;
-  readonly audiences?: readonly string[];
-  readonly scopes?: readonly string[];
-  readonly expiresAt?: string;
+  readonly credentialId: string;
+  readonly issuer: string;
+  readonly audiences: readonly string[];
+  readonly scopes: readonly string[];
+  readonly expiresAt: string;
+}
+
+export interface IssueAuthenticatedPrincipalInput {
+  readonly actorId: string;
+  readonly kind: AuthenticatedPrincipal["kind"];
+  readonly tenantMemberships: readonly (TenantId | string)[];
+  readonly assurance: AuthenticatedPrincipal["assurance"];
+  readonly credentialId: string;
+  readonly issuer: string;
+  readonly audiences: readonly string[];
+  readonly scopes: readonly string[];
+  readonly expiresAt: string;
 }
 
 export interface TenantContext {
@@ -27,7 +39,7 @@ export interface TenantContext {
   readonly correlationId: string;
   readonly causationId?: string;
   readonly assurance: AuthenticatedPrincipal["assurance"];
-  readonly credentialId?: string;
+  readonly credentialId: string;
   readonly audiences: readonly string[];
   readonly scopes: readonly string[];
 }
@@ -42,6 +54,7 @@ export interface ResolveTenantContextInput {
 }
 
 const storage = new AsyncLocalStorage<Readonly<TenantContext>>();
+const issuedPrincipals = new WeakSet<object>();
 
 /**
  * Branded types are erased at runtime, so a context object literal could be forged. Only contexts
@@ -67,6 +80,14 @@ function requireNonBlank(value: string, field: string): string {
   return value;
 }
 
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function authenticationMetadataFailed(): never {
+  throw problem({ code: "authentication_failed", detail: "Authenticated principal metadata is invalid." });
+}
+
 export function tenantId(value: string): TenantId {
   return requireNonBlank(value, "tenantId") as TenantId;
 }
@@ -75,7 +96,74 @@ export function actorId(value: string): ActorId {
   return requireNonBlank(value, "actorId") as ActorId;
 }
 
+/**
+ * Trusted authentication adapters use this constructor after verifying a credential. Context
+ * resolvers reject structurally similar object literals, so application code cannot manufacture
+ * authority by supplying principal-shaped data.
+ */
+export function issueAuthenticatedPrincipal(input: IssueAuthenticatedPrincipalInput): Readonly<AuthenticatedPrincipal> {
+  const kindIsValid = input.kind === "interactive" || input.kind === "workload";
+  const assuranceIsValid = input.assurance === "single-factor" || input.assurance === "mfa" || input.assurance === "workload";
+  const assuranceMatchesKind = input.kind === "workload" ? input.assurance === "workload" : input.assurance !== "workload";
+  if (
+    !kindIsValid ||
+    !assuranceIsValid ||
+    !assuranceMatchesKind ||
+    !isNonBlankString(input.actorId) ||
+    !isNonBlankString(input.credentialId) ||
+    !isNonBlankString(input.issuer) ||
+    !isNonBlankString(input.expiresAt) ||
+    !Array.isArray(input.tenantMemberships) ||
+    input.tenantMemberships.some((value) => !isNonBlankString(value)) ||
+    !Array.isArray(input.audiences) ||
+    input.audiences.length === 0 ||
+    input.audiences.some((value) => !isNonBlankString(value)) ||
+    !Array.isArray(input.scopes) ||
+    input.scopes.some((value) => !isNonBlankString(value))
+  ) {
+    authenticationMetadataFailed();
+  }
+  const expiry = Date.parse(input.expiresAt);
+  if (!Number.isFinite(expiry)) authenticationMetadataFailed();
+  const principal = Object.freeze({
+    actorId: actorId(input.actorId),
+    kind: input.kind,
+    tenantMemberships: Object.freeze([...new Set(input.tenantMemberships.map((value) => tenantId(value)))]),
+    assurance: input.assurance,
+    credentialId: input.credentialId,
+    issuer: input.issuer,
+    audiences: Object.freeze([...new Set(input.audiences)]),
+    scopes: Object.freeze([...new Set(input.scopes)]),
+    expiresAt: new Date(expiry).toISOString(),
+  });
+  issuedPrincipals.add(principal);
+  return principal;
+}
+
+export function assertIssuedAuthenticatedPrincipal(principal: Readonly<AuthenticatedPrincipal>, correlationId?: string): void {
+  if (!issuedPrincipals.has(principal)) {
+    throw problem({
+      code: "authentication_failed",
+      detail: "The authenticated principal is not trusted.",
+      ...(correlationId === undefined ? {} : { correlation_id: correlationId }),
+    });
+  }
+}
+
+function assertPrincipalCurrent(principal: Readonly<AuthenticatedPrincipal>, correlationId: string): void {
+  assertIssuedAuthenticatedPrincipal(principal, correlationId);
+  const expiry = Date.parse(principal.expiresAt);
+  if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+    throw problem({
+      code: "authentication_failed",
+      detail: "The authenticated principal is no longer valid.",
+      correlation_id: correlationId,
+    });
+  }
+}
+
 export function resolveTenantContext(input: ResolveTenantContextInput): Readonly<TenantContext> {
+  assertPrincipalCurrent(input.principal, input.correlationId);
   if (input.bodyTenantId !== undefined) {
     throw problem({
       title: "Untrusted tenant context",
@@ -112,9 +200,9 @@ export function resolveTenantContext(input: ResolveTenantContextInput): Readonly
     principalKind: input.principal.kind,
     assurance: input.principal.assurance,
     correlationId: requireNonBlank(input.correlationId, "correlationId"),
-    ...(input.principal.credentialId === undefined ? {} : { credentialId: input.principal.credentialId }),
-    audiences: Object.freeze([...(input.principal.audiences ?? [])]),
-    scopes: Object.freeze([...(input.principal.scopes ?? [])]),
+    credentialId: input.principal.credentialId,
+    audiences: Object.freeze([...input.principal.audiences]),
+    scopes: Object.freeze([...input.principal.scopes]),
     ...(input.causationId === undefined ? {} : { causationId: input.causationId }),
   };
   return issue(context);

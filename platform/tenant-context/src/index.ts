@@ -1,6 +1,8 @@
 export {
   actorId,
+  assertIssuedAuthenticatedPrincipal,
   currentTenantContext,
+  issueAuthenticatedPrincipal,
   resolveTenantContext,
   runWithTenantContext,
   tenantId,
@@ -9,6 +11,7 @@ export {
 export type {
   ActorId,
   AuthenticatedPrincipal,
+  IssueAuthenticatedPrincipalInput,
   ResolveTenantContextInput,
   TenantContext,
   TenantId,

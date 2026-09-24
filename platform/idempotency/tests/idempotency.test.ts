@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlatformProblem } from "../../problem-model/src/index.ts";
-import { actorId, resolveTenantContext, runWithTenantContext, tenantId, type TenantId } from "../../tenant-context/src/index.ts";
+import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
+import { resolveTenantContext, runWithTenantContext, tenantId, type TenantId } from "../../tenant-context/src/index.ts";
 import {
   canonicalJson,
   canonicalRequestHash,
@@ -22,7 +23,7 @@ const code = (expected: string) => (error: unknown) => error instanceof Platform
 
 function contextFor(tenant: TenantId, actor = "user_1") {
   return resolveTenantContext({
-    principal: Object.freeze({ actorId: actorId(actor), kind: "interactive" as const, tenantMemberships: Object.freeze([tenant]), assurance: "mfa" as const }),
+    principal: testPrincipal([tenant], { actor }),
     selectedTenantId: tenant,
     tenantState: "ACTIVE",
     correlationId: "corr_idem_1",

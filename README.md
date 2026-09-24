@@ -4,9 +4,9 @@ This repository is the TypeScript/Node.js 24 LTS implementation of the canonical
 
 ## Current implementation slice
 
-- Trusted tenant-context resolution and asynchronous propagation.
+- Trusted authenticated-principal issuance, credential-expiry revalidation, tenant-context resolution and asynchronous propagation.
 - Canonical problem details: a registered, contract-tested error catalog, validated trace identifiers, and a transport-neutral boundary that returns `application/problem+json` data and turns unexpected errors into a sanitized 500 with redacted internal evidence.
-- Tenant lifecycle aggregate and application handlers with explicit transition rules, optimistic version checks, and atomic unit-of-work ports. A real PostgreSQL adapter and atomicity integration test remain outstanding.
+- Tenant lifecycle aggregate and application handlers with explicit transition rules, optimistic version checks, and a real PostgreSQL adapter. Integration tests prove atomic tenant/default-role/administrator/audit/outbox commit, rollback, forced-RLS isolation and concurrent compare-and-set behavior.
 - Provider-neutral authentication validates OIDC, SAML and short-lived workload claims for mechanism, issuer, audience, lifetime, revocation and MFA, and down-scopes workload access to an explicit tenant and operation set. Cryptographic verification remains behind a port until production identity-provider/JWKS, SAML certificate, signed-token or mTLS adapters are selected.
 - Tenant-scoped RBAC (permission catalog, deny-by-default evaluator, fail-closed ABAC narrowing, role assignment) in Identity & Tenant and a maker-checker approval aggregate in Audit & Governance (separation of duties, MFA step-up, exact target matching). Both sit behind ports and are tested with in-memory doubles only; there is no PostgreSQL adapter yet.
 - Idempotent command execution: canonical request hashing, a transaction-aware executor and a store port (atomic claim, replay, payload-conflict 409, retention). Tested with an in-memory double only; the PostgreSQL adapter and concurrency proof remain outstanding.
@@ -14,15 +14,18 @@ This repository is the TypeScript/Node.js 24 LTS implementation of the canonical
 - Append-only audit: an immutable, tamper-evident audit event stamped from trusted context, allow-list redaction, a permissioned reader whose reads are audited, and adoption by the tenant, role, approval and dead-letter commands. In-memory double only; database immutability controls remain outstanding.
 - Architecture manifest validation for bounded-context ownership.
 
-The implementation deliberately starts without third-party runtime dependencies. Node 24's native erasable-TypeScript support runs the initial tests directly; the build toolchain and framework are selected only when a concrete adapter needs them.
+Node 24's native erasable-TypeScript support runs the code and tests directly. PostgreSQL access uses the pinned `pg` runtime dependency; no application framework or build toolchain has been selected yet.
 
 ## Commands
 
 ```powershell
 npm.cmd test
+npm.cmd run check:postgres
 npm.cmd run check:architecture
 npm.cmd run check
 ```
+
+`check:postgres` starts the local PostgreSQL 17 container on `127.0.0.1:54329`, applies forward-only migrations and runs the database integration suite. The Compose configuration uses trust authentication only for loopback-bound local development; it is not a production credential model. Use `npm.cmd run db:down` to stop the container while retaining its named development volume.
 
 ## Guardrails
 

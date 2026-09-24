@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlatformProblem } from "../../../platform/problem-model/src/index.ts";
+import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import {
   actorId,
   resolveTenantContext,
@@ -28,13 +29,7 @@ const denied = (code: string) => (error: unknown) => error instanceof PlatformPr
 function contextFor(tenant: TenantId, actor: string, options: { kind?: "interactive" | "workload"; scopes?: string[] } = {}) {
   const kind = options.kind ?? "interactive";
   return resolveTenantContext({
-    principal: Object.freeze({
-      actorId: actorId(actor),
-      kind,
-      tenantMemberships: Object.freeze([tenant]),
-      assurance: kind === "workload" ? ("workload" as const) : ("mfa" as const),
-      scopes: Object.freeze(options.scopes ?? []),
-    }),
+    principal: testPrincipal([tenant], { actor, kind, scopes: options.scopes }),
     selectedTenantId: tenant,
     tenantState: "ACTIVE",
     correlationId: "corr_rbac_1",

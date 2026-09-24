@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlatformProblem } from "../../../platform/problem-model/src/index.ts";
+import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import { resolvePlatformCommandContext } from "../../../platform/tenant-context/src/index.ts";
 import { createAuditPolicy, createAuditRecorder, verifyAuditEvent } from "../../../platform/audit/src/index.ts";
 import { TENANT_AUDIT_FIELDS, createTenantCommands } from "../application/tenant-commands.ts";
@@ -15,7 +16,7 @@ function setup(allowed: readonly ("tenant:provision" | "tenant:manage_lifecycle"
   const audit = createAuditRecorder({ policy: createAuditPolicy(TENANT_AUDIT_FIELDS), clock: () => NOW, newId: () => `aud_test_${++counter}` });
   const commands = createTenantCommands({ persistence, authorizer, audit, clock: () => NOW, newEventId: () => `evt_test_${++counter}` });
   const context = resolvePlatformCommandContext({
-    principal: { kind: "user", actorId: "operator_1" },
+    principal: testPrincipal([], { actor: "operator_1" }),
     correlationId: "corr_1",
     causationId: "cause_1",
   });
