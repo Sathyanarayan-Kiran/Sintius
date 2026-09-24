@@ -1,7 +1,7 @@
 "Test ID","Test Name","Test Type","Status","Story ID","Epic ID","Requirement IDs","Automated","Evidence"
 "TC-001-01-01","Member context resolves and propagates across asynchronous work","unit","passing","US-BL-001-01","SUB-E001","","Planned",""
 "TC-001-01-02","Non-member and body-override attempts fail closed","security","passing","US-BL-001-01","SUB-E001","MSR-082-8E4D03300F","Planned",""
-"TC-001-01-03","Trusted tenant reaches transaction, cache and event envelope","integration","partial","US-BL-001-01","SUB-E001","MSR-082-8E4D03300F","Planned",""
+"TC-001-01-03","Trusted tenant reaches transaction, cache and event envelope","integration","passing","US-BL-001-01","SUB-E001","MSR-082-8E4D03300F","Planned",""
 "TC-001-02-01","Exact replay returns one response and one effect","contract","passing","US-BL-001-02","SUB-E001","MSR-058-C69192855F;MSR-058-2CCE1DD0DC;MSR-100-D1A3F8F46A","Planned",""
 "TC-001-02-02","Concurrent duplicate race produces one effect","concurrency","passing","US-BL-001-02","SUB-E001","MSR-058-C69192855F;MSR-058-2CCE1DD0DC;MSR-100-D1A3F8F46A","Planned",""
 "TC-001-02-03","Same key remains isolated between tenants","security","passing","US-BL-001-02","SUB-E001","MSR-058-C69192855F","Planned",""

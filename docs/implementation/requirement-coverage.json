@@ -34,9 +34,9 @@
     "percent": 100
   },
   "implementationEvidence": {
-    "count": 0,
+    "count": 3,
     "denominator": 1335,
-    "percent": 0
+    "percent": 0.22
   },
   "atomicityNeedsReview": 0,
   "backlogTraceabilityStatus": "complete",

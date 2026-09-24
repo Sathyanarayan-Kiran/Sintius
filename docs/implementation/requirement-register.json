@@ -34740,7 +34740,16 @@
           "TC-001-02-02",
           "TC-001-02-03"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/idempotency/src/executor.ts",
+          "code:platform/idempotency/src/canonical.ts",
+          "code:platform/idempotency/infrastructure/postgres/store.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/002_idempotency.sql",
+          "code:apps/api/src/http/server.ts",
+          "test:TC-001-02-01",
+          "test:TC-001-02-02",
+          "test:TC-001-02-03"
+        ],
         "notes": "Normalized from master specification §58, line 1491; mapping generated without claiming implementation evidence."
       }
     },
@@ -34782,7 +34791,12 @@
           "TC-001-02-01",
           "TC-001-02-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/idempotency/src/executor.ts",
+          "code:platform/idempotency/infrastructure/postgres/store.ts",
+          "test:TC-001-02-01",
+          "test:TC-001-02-02"
+        ],
         "notes": "Normalized from master specification §58, line 1493; mapping generated without claiming implementation evidence."
       }
     },
@@ -56742,7 +56756,13 @@
           "TC-001-02-01",
           "TC-001-02-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/idempotency/src/executor.ts",
+          "code:platform/idempotency/infrastructure/postgres/store.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/tenant-persistence.ts",
+          "test:TC-001-02-01",
+          "test:TC-001-02-02"
+        ],
         "notes": "Normalized from master specification §100, line 2391; mapping generated without claiming implementation evidence."
       }
     },
