@@ -35,7 +35,7 @@
 <header>
   <h1>Implementation roadmap</h1>
   <p>Live local tracker for the complete master-specification backlog. Canonical delivery stories and source-derived gap stories retain requirement, acceptance-criterion and test traceability with editable delivery status.</p>
-  <div class="meta"><span>Runtime: TypeScript / Node.js 24 LTS</span><span>17 canonical epics</span><span>Canonical and source-derived stories</span><span>Requirement-level acceptance criteria</span><span>Requirement-level tests</span><span>Implementation evidence tracked separately</span></div>
+  <div class="meta"><span>Runtime: TypeScript / Node.js 24 LTS</span><span>Database: local PostgreSQL 17</span><span>127/127 automated checks green</span><span>17 canonical epics</span><span>Canonical and source-derived stories</span><span>Requirement-level acceptance criteria</span><span>Requirement-level tests</span><span>Implementation evidence tracked separately</span></div>
 </header>
 <div class="wrap">
   <section class="stats" id="stats" aria-label="Roadmap summary"></section>
@@ -47,12 +47,14 @@
     <div class="toolbar-actions"><button id="expandAll">Expand all</button><button id="collapseAll">Collapse</button><button id="export" class="primary">Export status</button><button id="importButton">Import</button><input id="importFile" class="hidden" type="file" accept="application/json"></div>
   </div>
   <div class="source-note"><strong>Tracking model.</strong> The catalogue contains 103 canonical delivery stories plus source-derived gap stories generated from the complete master requirement register. “Tracked tests passing” counts roadmap test records whose status is set to Passing; it is not the number of assertions reported by <code>npm test</code>. Status changes save in this browser only. Use <strong>Export status</strong> to preserve or share them.</div>
+  <div class="source-note"><strong>Automated execution baseline.</strong> 127/127 checks pass: 119 unit tests and 8 live PostgreSQL integration tests. Roadmap test status and requirement-level implementation evidence remain separate measures.</div>
   <div class="source-note" id="masterCoverage"></div>
   <main id="roadmap"></main>
 </div>
 <footer>Updated 2026-09-24 · MVP source: <code>docs/pre-implementation/19-mvp-backlog.md</code> · Future horizons: <code>docs/pre-engineering/SUB-0003_MVP_Scope_Release_Strategy.md</code> · Delivery sequence: <code>docs/pre-implementation/21-technical-implementation-plan.md</code>.</footer>
 
-<script id="roadmap-seed" type="application/json">
+<!-- Legacy snapshot retained for historical diff context only; runtime data comes from implementation-roadmap-data.js. -->
+<script id="legacy-roadmap-seed" type="application/json">
 {
   "version": 1,
   "generatedAt": "2026-09-23",
@@ -185,11 +187,16 @@
 <script>
 (() => {
   "use strict";
-  const STORAGE_KEY = "sintius-implementation-roadmap-v1";
+  // v2 prevents stale browser-local overrides from masking newly committed implementation evidence.
+  const STORAGE_KEY = "sintius-implementation-roadmap-v2";
   const IMPL = ["not_started","in_progress","implemented","blocked","deferred"];
   const TEST = ["not_run","partial","passing","failing","blocked"];
   const LABEL = {not_started:"Not started",in_progress:"In progress",implemented:"Implemented",blocked:"Blocked",deferred:"Deferred",not_run:"Not run",partial:"Partial",passing:"Passing",failing:"Failing"};
-  const seed = globalThis.SINTIUS_ROADMAP || JSON.parse(document.getElementById("roadmap-seed").textContent);
+  const seed = globalThis.SINTIUS_ROADMAP;
+  if (!seed || seed.version < 2) {
+    document.getElementById("roadmap").innerHTML = '<div class="empty">Current roadmap data could not be loaded. Keep implementation-roadmap-data.js beside this HTML file and reload.</div>';
+    return;
+  }
   const masterCoverage = globalThis.SINTIUS_REQUIREMENT_COVERAGE;
   let overrides = load();
   const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
