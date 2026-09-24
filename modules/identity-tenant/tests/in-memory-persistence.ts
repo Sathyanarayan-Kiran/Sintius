@@ -1,5 +1,6 @@
 import type { AuditEvent } from "../../../platform/audit/src/index.ts";
 import type { EventEnvelope } from "../../../platform/event-envelope/src/index.ts";
+import type { IdempotencyRecord } from "../../../platform/idempotency/src/index.ts";
 import { problem } from "../../../platform/problem-model/src/index.ts";
 import type {
   DefaultRoleRecord,
@@ -22,12 +23,13 @@ interface Store {
   memberships: InitialAdministratorRecord[];
   audit: AuditEvent[];
   outbox: EventEnvelope[];
+  idempotency: Map<string, IdempotencyRecord>;
 }
 
 export type FailurePoint = "role" | "membership" | "audit" | "outbox";
 
 export class InMemoryTenantPersistence implements TenantPersistence {
-  committed: Store = { tenants: new Map(), roles: [], memberships: [], audit: [], outbox: [] };
+  committed: Store = { tenants: new Map(), roles: [], memberships: [], audit: [], outbox: [], idempotency: new Map() };
   transactionsStarted = 0;
   failAt: FailurePoint | undefined;
 
@@ -39,6 +41,7 @@ export class InMemoryTenantPersistence implements TenantPersistence {
       memberships: [...this.committed.memberships],
       audit: [...this.committed.audit],
       outbox: [...this.committed.outbox],
+      idempotency: new Map(this.committed.idempotency),
     };
     let open = true;
     const guard = () => {
@@ -49,11 +52,30 @@ export class InMemoryTenantPersistence implements TenantPersistence {
     };
     const unitOfWork: TenantUnitOfWork = {
       idempotency: {
-        claim: async () => {
-          throw new Error("The tenant command unit tests do not exercise idempotency directly.");
+        claim: async (input) => {
+          guard();
+          const key = [input.tenantId, input.scope, input.key].map(encodeURIComponent).join("|");
+          const existing = staged.idempotency.get(key);
+          if (existing !== undefined && Date.parse(existing.expiresAt) > Date.parse(input.now)) {
+            return { kind: "existing" as const, record: existing };
+          }
+          staged.idempotency.set(key, {
+            tenantId: input.tenantId,
+            scope: input.scope,
+            key: input.key,
+            requestHash: input.requestHash,
+            status: "processing",
+            createdAt: input.now,
+            expiresAt: input.expiresAt,
+          });
+          return { kind: "claimed" as const };
         },
-        complete: async () => {
-          throw new Error("The tenant command unit tests do not exercise idempotency directly.");
+        complete: async (input) => {
+          guard();
+          const key = [input.tenantId, input.scope, input.key].map(encodeURIComponent).join("|");
+          const claimed = staged.idempotency.get(key);
+          if (claimed === undefined || claimed.status !== "processing") throw new Error("complete without processing claim");
+          staged.idempotency.set(key, { ...claimed, status: "completed", response: input.response });
         },
       },
       tenants: {

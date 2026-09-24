@@ -39,17 +39,38 @@ function commands(audit = createAuditRecorder({
   clock: () => NOW,
   newId: () => `aud_pg_${++sequence}`,
 })) {
-  return createTenantCommands({
+  const raw = createTenantCommands({
     persistence,
     authorizer: new AllowListAuthorizer(["tenant:provision", "tenant:manage_lifecycle"]),
     audit,
     clock: () => NOW,
     newEventId: () => `evt_pg_${++sequence}`,
   });
+  const metadata = () => ({ idempotencyKey: `postgres-command-key-${String(++sequence).padStart(8, "0")}` });
+  return Object.freeze({
+    provisionTenant: (commandContext: Parameters<typeof raw.provisionTenant>[0], input: Parameters<typeof raw.provisionTenant>[1], commandMetadata = metadata()) =>
+      raw.provisionTenant(commandContext, input, commandMetadata),
+    activateTenant: (commandContext: Parameters<typeof raw.activateTenant>[0], input: Parameters<typeof raw.activateTenant>[1], commandMetadata = metadata()) =>
+      raw.activateTenant(commandContext, input, commandMetadata),
+    suspendTenant: (commandContext: Parameters<typeof raw.suspendTenant>[0], input: Parameters<typeof raw.suspendTenant>[1], commandMetadata = metadata()) =>
+      raw.suspendTenant(commandContext, input, commandMetadata),
+    reactivateTenant: (commandContext: Parameters<typeof raw.reactivateTenant>[0], input: Parameters<typeof raw.reactivateTenant>[1], commandMetadata = metadata()) =>
+      raw.reactivateTenant(commandContext, input, commandMetadata),
+    closeTenant: (commandContext: Parameters<typeof raw.closeTenant>[0], input: Parameters<typeof raw.closeTenant>[1], commandMetadata = metadata()) =>
+      raw.closeTenant(commandContext, input, commandMetadata),
+  });
 }
 
 async function count(table: string, tenant: string): Promise<number> {
   const result = await admin.query(`SELECT count(*)::int AS count FROM ${table} WHERE tenant_id = $1`, [tenant]);
+  return result.rows[0].count;
+}
+
+async function countIdempotencyScope(tenant: string, scope: string): Promise<number> {
+  const result = await admin.query(
+    "SELECT count(*)::int AS count FROM idempotency_record WHERE tenant_id = $1 AND command_scope = $2",
+    [tenant, scope],
+  );
   return result.rows[0].count;
 }
 
@@ -84,6 +105,52 @@ test("TC-002-01-03 PostgreSQL commits tenant, default role, administrator, audit
   assert.equal(await count("outbox_event", tenant.id), 1);
   const row = await admin.query("SELECT state, row_version FROM tenant WHERE tenant_id = $1", [tenant.id]);
   assert.deepEqual(row.rows[0], { state: "PROVISIONING", row_version: "1" });
+});
+
+test("P0-010 concurrent provisioning retry commits one tenant, audit, outbox and stored response", async () => {
+  const service = commands();
+  const commandContext = context("operator_proof");
+  const input = {
+    tenantId: "tenant_phase0_proof",
+    displayName: "Phase 0 proof",
+    initialAdministratorActorId: "admin_phase0_proof",
+  };
+  const metadata = { idempotencyKey: "phase0-provision-proof-key-0001" };
+
+  const results = await Promise.all([
+    service.provisionTenant(commandContext, input, metadata),
+    service.provisionTenant(commandContext, input, metadata),
+  ]);
+
+  assert.deepEqual(results[1], results[0]);
+  for (const table of ["tenant", "tenant_role", "tenant_role_assignment", "audit_event", "outbox_event", "idempotency_record"]) {
+    assert.equal(await count(table, "tenant_phase0_proof"), 1, `${table} must contain exactly one committed record`);
+  }
+  const stored = await admin.query(
+    `SELECT status, response_status, response_body
+       FROM idempotency_record
+      WHERE tenant_id = $1 AND command_scope = 'tenant.provision'`,
+    ["tenant_phase0_proof"],
+  );
+  assert.deepEqual(stored.rows[0], {
+    status: "completed",
+    response_status: 201,
+    response_body: {
+      id: "tenant_phase0_proof",
+      state: "PROVISIONING",
+      version: 1,
+      created_at: NOW.toISOString(),
+      updated_at: NOW.toISOString(),
+      display_name: "Phase 0 proof",
+    },
+  });
+
+  await assert.rejects(
+    service.provisionTenant(commandContext, { ...input, displayName: "Changed payload" }, metadata),
+    (error: unknown) => error instanceof PlatformProblem && error.problem.code === "idempotency_key_reused_with_different_payload",
+  );
+  assert.equal(await count("audit_event", "tenant_phase0_proof"), 1);
+  assert.equal(await count("outbox_event", "tenant_phase0_proof"), 1);
 });
 
 test("TC-002-01-03 a PostgreSQL failure rolls every earlier provisioning write back", async () => {
@@ -202,7 +269,7 @@ test("TC-001-02-01 PostgreSQL replays one stored response and commits the protec
   assert.equal(replay.replayed, true);
   assert.deepEqual(replay.response, first.response);
   assert.equal(runs.value, 1);
-  assert.equal(await count("idempotency_record", id), 1);
+  assert.equal(await countIdempotencyScope(id, "tenant.update_profile"), 1);
   const row = await admin.query("SELECT display_name, row_version FROM tenant WHERE tenant_id = $1", [id]);
   assert.deepEqual(row.rows[0], { display_name: "updated-1", row_version: "3" });
 
@@ -232,7 +299,7 @@ test("TC-001-02-02 PostgreSQL unique-key serialization permits one effect under 
   assert.equal(results.filter((result) => !result.replayed).length, 1);
   assert.equal(results.filter((result) => result.replayed).length, 11);
   for (const result of results) assert.deepEqual(result.response, results[0]!.response);
-  assert.equal(await count("idempotency_record", id), 1);
+  assert.equal(await countIdempotencyScope(id, "tenant.update_profile"), 1);
   const row = await admin.query("SELECT row_version FROM tenant WHERE tenant_id = $1", [id]);
   assert.equal(row.rows[0].row_version, "3");
 });
@@ -253,8 +320,8 @@ test("TC-001-02-03 PostgreSQL RLS isolates the same idempotency key between tena
   assert.equal(resultB.replayed, false);
   assert.equal(runsA.value, 1);
   assert.equal(runsB.value, 1);
-  assert.equal(await count("idempotency_record", a), 1);
-  assert.equal(await count("idempotency_record", b), 1);
+  assert.equal(await countIdempotencyScope(a, "tenant.update_profile"), 1);
+  assert.equal(await countIdempotencyScope(b, "tenant.update_profile"), 1);
 });
 
 test("PostgreSQL rolls back the idempotency claim when the protected effect fails", async () => {
@@ -275,7 +342,7 @@ test("PostgreSQL rolls back the idempotency claim when the protected effect fail
     );
   });
 
-  assert.equal(await count("idempotency_record", id), 0);
+  assert.equal(await countIdempotencyScope(id, "tenant.update_profile"), 0);
   const row = await admin.query("SELECT display_name, row_version FROM tenant WHERE tenant_id = $1", [id]);
   assert.deepEqual(row.rows[0], { display_name: "tenant_idem_rollback", row_version: "2" });
 });

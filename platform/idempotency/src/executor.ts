@@ -1,5 +1,11 @@
 import { problem } from "../../problem-model/src/index.ts";
-import { assertNoTenantIdentity, currentTenantContext } from "../../tenant-context/src/index.ts";
+import {
+  assertIssuedPlatformContext,
+  assertNoTenantIdentity,
+  currentTenantContext,
+  type PlatformCommandContext,
+  type TenantId,
+} from "../../tenant-context/src/index.ts";
 import { canonicalJson, canonicalRequestHash, hashesEqual, type JsonValue } from "./canonical.ts";
 import type { IdempotencyPersistence, IdempotencyStore, StoredResponse } from "./ports.ts";
 
@@ -21,6 +27,18 @@ export interface IdempotentResult {
   readonly replayed: boolean;
 }
 
+interface TrustedExecutionScope {
+  readonly tenantId: TenantId;
+  readonly correlationId: string;
+  readonly causationId?: string;
+}
+
+interface ExecutorDependencies<U extends { readonly idempotency: IdempotencyStore }> {
+  readonly persistence: IdempotencyPersistence<U>;
+  readonly clock: () => Date;
+  readonly retentionSeconds?: number;
+}
+
 function deepFreeze<T>(value: T): T {
   if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
     Object.freeze(value);
@@ -34,21 +52,16 @@ function deepFreeze<T>(value: T): T {
  * response all commit in one transaction, so a failed attempt leaves no record and can be retried,
  * and a committed attempt is replayed verbatim without repeating any effect.
  */
-export function createIdempotentExecutor<U extends { readonly idempotency: IdempotencyStore }>(dependencies: {
-  readonly persistence: IdempotencyPersistence<U>;
-  readonly clock: () => Date;
-  /** Per-tenant retention policy; the platform default is 7 days. */
-  readonly retentionSeconds?: number;
-}) {
+function createScopedExecutor<U extends { readonly idempotency: IdempotencyStore }>(dependencies: ExecutorDependencies<U>) {
   const retentionSeconds = dependencies.retentionSeconds ?? DEFAULT_RETENTION_SECONDS;
 
-  return async function executeIdempotently(
+  return async function executeForScope(
+    context: TrustedExecutionScope,
     request: IdempotentRequest,
     /** Runs before any lookup, so a replay can never bypass current authorization. */
     authorize: () => Promise<void>,
     work: (unitOfWork: U) => Promise<StoredResponse>,
   ): Promise<IdempotentResult> {
-    const context = currentTenantContext();
     const correlation_id = context.correlationId;
 
     if (!SCOPE_PATTERN.test(request.scope)) {
@@ -118,5 +131,45 @@ export function createIdempotentExecutor<U extends { readonly idempotency: Idemp
       await unitOfWork.idempotency.complete({ tenantId: context.tenantId, scope: request.scope, key, response: stored });
       return { response: stored, replayed: false };
     });
+  };
+}
+
+/** Idempotent execution for an established tenant context. */
+export function createIdempotentExecutor<U extends { readonly idempotency: IdempotencyStore }>(dependencies: ExecutorDependencies<U>) {
+  const execute = createScopedExecutor(dependencies);
+  return async (
+    request: IdempotentRequest,
+    authorize: () => Promise<void>,
+    work: (unitOfWork: U) => Promise<StoredResponse>,
+  ): Promise<IdempotentResult> => execute(currentTenantContext(), request, authorize, work);
+}
+
+/**
+ * Idempotent execution for an issued platform command targeting a tenant, including provisioning
+ * before that tenant exists. The target is the transaction/RLS scope and is never taken from the
+ * hashed payload, preventing an untrusted second tenant identity from entering the command body.
+ */
+export function createPlatformIdempotentExecutor<U extends { readonly idempotency: IdempotencyStore }>(
+  dependencies: ExecutorDependencies<U>,
+) {
+  const execute = createScopedExecutor(dependencies);
+  return async (
+    context: Readonly<PlatformCommandContext>,
+    targetTenantId: TenantId,
+    request: IdempotentRequest,
+    authorize: () => Promise<void>,
+    work: (unitOfWork: U) => Promise<StoredResponse>,
+  ): Promise<IdempotentResult> => {
+    assertIssuedPlatformContext(context);
+    return execute(
+      {
+        tenantId: targetTenantId,
+        correlationId: context.correlationId,
+        ...(context.causationId === undefined ? {} : { causationId: context.causationId }),
+      },
+      request,
+      authorize,
+      work,
+    );
   };
 }

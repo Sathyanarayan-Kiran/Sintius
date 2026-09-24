@@ -33,7 +33,7 @@ Do not restart discovery or regenerate a smaller backlog.
 - GitHub push protection scans for secret patterns. Do not put literal secret-shaped strings (for example `sk_test_...`) in source or tests, even fake or documented ones; build them at runtime (`"sk_" + "test_..."`). History was rewritten once to remove one; a local branch `backup-before-secret-fix` still holds the flagged string and must never be pushed.
 - Git prints many "LF will be replaced by CRLF" warnings on this machine; they are harmless.
 - Local database: Docker Compose runs PostgreSQL 17 on `127.0.0.1:54329`; `db:up` waits for health, `db:migrate` applies checksum-protected forward-only migrations, and `db:down` retains the named volume. Compose trust authentication is strictly local-development configuration.
-- Baseline: `npm run check` passes with **119 unit tests plus 8 PostgreSQL integration tests (127 total)**. Run it before editing and confirm.
+- Baseline: `npm run check` passes with **122 unit tests plus 9 PostgreSQL integration tests (131 total)**. Run it before editing and confirm.
 
 ## 3. What exists (verify by reading; do not trust this list blindly)
 
@@ -49,7 +49,7 @@ Trusted principal and tenant context boundaries: authentication issues WeakSet-b
 CloudEvents-style envelope conforming to `docs/pre-implementation/contracts/events/envelope.schema.json`. Tenant, actor, correlation and causation come only from a trusted `EventScope`; payload may not restate tenant identity. Event id default `evt_<uuid>` pending SPIKE-03.
 
 ### platform/idempotency (P0-006 / US-BL-001-02)
-Deterministic canonical hashing, `IdempotencyStore` atomic-claim contract, and `createIdempotentExecutor`: validates key (16 to 128 URL-safe chars) and scope, rejects tenant identity in payload, **authorizes before any lookup**, claim then work then complete in one transaction, replay returns the stored response, different payload gives 409, in-flight gives `request_in_progress`, default retention 7 days. Module unit-of-work types expose `idempotency: IdempotencyStore`. The real PostgreSQL store is transaction-bound through identity-tenant persistence; migration 002 adds the forced-RLS table and primary-key serialization. Tests prove exact replay, rollback, payload conflict, tenant isolation and a 12-request concurrency race. **The concrete tenant lifecycle command API is not yet wrapped in the executor.**
+Deterministic canonical hashing, `IdempotencyStore` atomic-claim contract, `createIdempotentExecutor` and `createPlatformIdempotentExecutor`: validate key/scope, reject tenant identity in payload, **authorize before lookup**, and commit claim, work and response together. Migration 002 adds the forced-RLS PostgreSQL store; migration 003 defers its tenant FK so provisioning can claim before inserting the tenant in the same transaction. Every tenant provisioning/lifecycle entry point requires idempotency command metadata. Tests prove exact replay, current authorization on replay, rollback, payload conflict, tenant isolation, a 12-request adapter race, and concurrent provisioning with exactly one complete tenant/audit/outbox/result write set.
 
 ### platform/outbox (P0-007 / US-BL-001-03)
 `OutboxWriter`, `OutboxStore` (lease contract: at most one lease per aggregate stream, head-of-line blocking), `EventPublisher`, `InboxStore`; `createOutboxDispatcher` (ordered delivery, exponential backoff 5s doubling to 15 min, redacted errors, dead-lettering including crash-looping events, lease-loss handling); `createIdempotentConsumer` (dedup per consumer and tenant, rolled back with the handler); `createDeadLetterOperations` (operator requeue or skip).
@@ -59,7 +59,7 @@ Deterministic canonical hashing, `IdempotencyStore` atomic-claim contract, and `
 `AuditEvent` is deep-frozen and stamped only from trusted context, carries a SHA-256 `evidenceHash` (`verifyAuditEvent`). `createAuditPolicy` is a deny-by-default per-target allow-list (secret-like field names cannot be allow-listed); `toSafeSnapshot` redacts. `createAuditRecorder` (`recordForCurrentContext`, `recordForPlatformCommand`): a failed append propagates so the transaction rolls back and `onWriteFailure` alerts. `createAuditReader`: permissioned (`authorize` callback), tenant-scoped, paged (limit max 500), and every read is itself audited. Modules export their audit field lists (`TENANT_AUDIT_FIELDS`, `ROLE_AUDIT_FIELDS`, `APPROVAL_AUDIT_FIELDS`, `OUTBOX_AUDIT_FIELDS`); the app root composes them into one policy. No hash chaining (decision open).
 
 ### modules/identity-tenant
-- P0-003 / US-BL-002-01: pure tenant aggregate (`domain/tenant.ts`) and commands (`application/tenant-commands.ts`): provision, activate, suspend, reactivate, close. Authorize first (deny-by-default `PlatformAuthorizer` port), then one unit of work writing tenant, default `tenant_administrator` role, initial administrator membership, audit event and outbox envelope. Reasons required for suspend and close. `infrastructure/postgres/tenant-persistence.ts` is the real adapter; the migration enables and forces tenant RLS and grants the application role only INSERT on audit/outbox. The PostgreSQL suite proves commit, rollback, tenant A/B isolation and lifecycle CAS concurrency.
+- P0-003 / US-BL-002-01: pure tenant aggregate (`domain/tenant.ts`) and idempotent commands (`application/tenant-commands.ts`): provision, activate, suspend, reactivate, close. Trusted platform context and target tenant establish the transaction/RLS scope; authorization runs before replay lookup. One unit of work contains the idempotency record, tenant/default-role/administrator changes, audit, outbox and stored response. Reasons are required for suspend/close. PostgreSQL tests prove commit, rollback, replay, payload conflict, tenant A/B isolation, concurrent provisioning and lifecycle CAS concurrency.
 - P0-004 / US-BL-002-02 and US-BL-002-04 (written by you earlier): provider-neutral authentication (`application/authentication*.ts`): OIDC/SAML and workload policy; enforces mechanism, issuer, audience, lifetime, MFA, revocation, tenant binding, workload scopes, and workload/interactive separation. Uses a verifier test double; **no production cryptographic adapter, session store or key discovery exists.**
 - P0-005 / US-BL-002-03: `domain/authorization.ts` (frozen permission catalog from `13-api-specification.md` section 4 plus tenant, approval and dead-letter permissions; deny-by-default `effectivePermissions`; fail-closed ABAC `constraintsSatisfied` that only narrows), `application/authorization.ts` (`createTenantAuthorizer` with live role lookup so revocation applies on the next command; workload principals need the permission as an explicit scope; `createRoleAdministration` requires `tenant:role:assign` and blocks changing your own roles, which is my addition beyond the spec). Default administrator role holds only `tenant:role:manage` and `tenant:role:assign`.
 
@@ -72,10 +72,10 @@ Owns `approval_request` (Audit & Governance, per the canonical sources); `approv
 |---|---|---|---|---|
 | US-BL-001-05 (P0-002) | SUB-E001 | 80 | 2 `passing` | HTTP ingress adapter, ingress correlation propagation, metrics, UI copy |
 | US-BL-001-01 (P0-001) | SUB-E001 | 90 | TC-001-01-03 `partial` | PostgreSQL/RLS binding is proven; worker/job context and real cache adapter remain |
-| US-BL-001-02 (P0-006) | SUB-E001 | 75 | 3 `passing` | lifecycle/API wiring, HTTP response headers, failed-final storage, retention source, cleanup job and metrics |
-| US-BL-001-03 (P0-007) | SUB-E001 | 50 | 2 `partial` | outbox table/atomic insert proven; PostgreSQL leasing/inbox adapter, broker, schema validation, runtime, gap detection, metrics and retention remain |
+| US-BL-001-02 (P0-006) | SUB-E001 | 85 | 3 `passing` | HTTP wiring/headers, failed-final storage, retention source, cleanup job and metrics |
+| US-BL-001-03 (P0-007) | SUB-E001 | 55 | 1 `passing`, 1 `partial` | atomic insert proven; PostgreSQL leasing/inbox, broker, schema validation, runtime, gap detection, metrics and retention remain |
 | US-BL-001-04 (P0-009) | SUB-E001 | 30 | 2 `partial` | eight foundation tables use forced RLS; extend to all tenant tables and automate the complete A/B CRUD matrix |
-| US-BL-002-01 (P0-003) | SUB-E002 | 85 | 3 `passing` | idempotency wrapper, reviewed platform RBAC, HTTP ingress |
+| US-BL-002-01 (P0-003) | SUB-E002 | 90 | 3 `passing` | reviewed platform RBAC and HTTP ingress |
 | US-BL-002-02 (P0-004) | SUB-E002 | 70 | 2 `partial` | real OIDC/SAML signature and key discovery, durable sessions, security audit facts |
 | US-BL-002-04 (P0-004) | SUB-E002 | 70 | 1 `partial`, 1 `passing` | signed-token or mTLS adapter, issuance and rotation |
 | US-BL-002-03 (P0-005) | SUB-E002 | 50 | 2 `partial` | PostgreSQL adapters and RLS, ingress permission declaration, ApprovalPolicy management, expiry sweeper, platform-role scoping, replace `PlatformAuthorizer` port, metrics |
@@ -86,7 +86,7 @@ Do not mark all of US-MSR-080-01 implemented: it also covers authorization, encr
 ## 5. Known gaps and design choices to review
 
 Gaps found in review (fix or raise them):
-1. The tenant lifecycle commands are not idempotent-wrapped. Identity-tenant now uses `platform/outbox`'s shared `OutboxWriter`.
+1. The dedicated P0-010 active-tenant proof record/event, dispatcher replay, end-to-end trace and CI evidence capture remain; concurrent tenant provisioning now proves the core database invariant.
 2. The `PlatformAuthorizer` for provisioning and lifecycle is only a deny-by-default port; platform roles are not modeled.
 3. Only three modules' commands audit through the shared recorder plus dead-letter resolution; every future material command must too.
 4. Audit-write-failure paging, the metrics named in the backlog, and the log/trace secret-scan release gate are not built.
@@ -98,7 +98,7 @@ Design choices I made that the Product Owner has not confirmed: dead-letter bloc
 Do these in order, one bounded tranche at a time, and stop to report after each.
 
 **A. Decision-independent work**
-1. Wrap the tenant lifecycle command API in `createIdempotentExecutor`; the shared `OutboxWriter` and PostgreSQL idempotency-store work are complete.
+1. Add the dedicated P0-010 active-tenant proof record/event, end-to-end trace and CI evidence capture; do not call the release gate complete before its remaining acceptance criteria pass.
 2. Consumer-side `aggregate_version` gap detection helper for use after a dead-letter skip.
 3. Propose (do not silently add) a type-check step, and propose a permission or role matrix review for the 12 personas.
 4. An HTTP ingress adapter design note for `apps/api` (correlation and causation IDs, `Idempotency-Key`, `Retry-After`, problem+json). Build it only if the Product Owner approves the framework choice; the repo has no web framework yet.
@@ -107,7 +107,7 @@ Do these in order, one bounded tranche at a time, and stop to report after each.
 1. **Complete for tenant lifecycle:** migration and adapter for identity-tenant, transaction-local tenant binding, forced RLS, repository filters, commit/rollback and CAS concurrency evidence. TC-002-01-03 is `passing`; TC-001-01-03 is conservatively `partial` until the real cache and worker/job paths are integrated.
 2. Idempotency adapter/unique-index race proof is complete. Next add outbox SKIP LOCKED leasing, explicit audit UPDATE/DELETE denial tests, then approval persistence.
 3. Extend **P0-009** (`BL-001-04`, `BL-017-03`) across every tenant-owned table and add the full tenant A/B CRUD matrix. Current proof covers the eight foundation tables, but the roadmap story is broader.
-4. Build **P0-010**, the Phase 0 proof command: establish trusted authenticated context, execute an idempotent mutation twice with one key, and prove one mutation, one audit event and one outbox event committed atomically.
+4. **P0-010 is in progress:** concurrent idempotent provisioning proves one tenant/default-role/admin, audit, outbox and stored response. The dedicated active-tenant proof record/event, dispatcher retry, cross-tenant observation test, trace and CI release evidence remain.
 
 **C. Blocked on identity-provider choices**
 Production OIDC/JWKS, SAML certificate and workload signed-token or mTLS adapters, durable session and revocation storage, authentication audit facts. Propose options; do not select vendors or libraries silently.

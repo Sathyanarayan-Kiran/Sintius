@@ -1,5 +1,6 @@
 import type { AuditRecorder } from "../../../platform/audit/src/index.ts";
 import { buildEventEnvelopeFor, eventScopeForPlatformCommand, type BuildEventInput } from "../../../platform/event-envelope/src/index.ts";
+import { createPlatformIdempotentExecutor, type StoredResponse } from "../../../platform/idempotency/src/index.ts";
 import { problem } from "../../../platform/problem-model/src/index.ts";
 import {
   actorId,
@@ -35,6 +36,11 @@ export interface TenantLifecycleInput {
   readonly reason?: string;
 }
 
+export interface TenantCommandMetadata {
+  /** Supplied by the transport's Idempotency-Key header; kept outside domain command bodies. */
+  readonly idempotencyKey?: string;
+}
+
 type LifecycleTarget = "ACTIVE" | "SUSPENDED" | "CLOSED";
 
 const REASON_REQUIRED: ReadonlySet<LifecycleTarget> = new Set(["SUSPENDED", "CLOSED"]);
@@ -60,13 +66,57 @@ function eventInputFor(change: TenantChange, data: Record<string, unknown>): Bui
   };
 }
 
+function storedTenant(tenant: Readonly<TenantSnapshot>, status: number): StoredResponse {
+  return {
+    status,
+    body: {
+      id: tenant.id,
+      display_name: tenant.displayName,
+      state: tenant.state,
+      version: tenant.version,
+      created_at: tenant.createdAt,
+      updated_at: tenant.updatedAt,
+    },
+  };
+}
+
+function tenantFromStored(response: StoredResponse, expectedTenantId: string, correlationId: string): Readonly<TenantSnapshot> {
+  const body = response.body;
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw problem({ code: "invalid_trusted_context", detail: "Stored tenant response is invalid.", correlation_id: correlationId });
+  }
+  const value = body as Record<string, unknown>;
+  const state = value.state;
+  if (
+    typeof value.id !== "string" ||
+    value.id !== expectedTenantId ||
+    typeof value.display_name !== "string" ||
+    (state !== "PROVISIONING" && state !== "ACTIVE" && state !== "SUSPENDED" && state !== "CLOSED") ||
+    typeof value.version !== "number" ||
+    !Number.isInteger(value.version) ||
+    typeof value.created_at !== "string" ||
+    typeof value.updated_at !== "string"
+  ) {
+    throw problem({ code: "invalid_trusted_context", detail: "Stored tenant response is invalid.", correlation_id: correlationId });
+  }
+  return Object.freeze({
+    id: tenantId(value.id),
+    displayName: value.display_name,
+    state,
+    version: value.version,
+    createdAt: value.created_at,
+    updatedAt: value.updated_at,
+  });
+}
+
 /**
- * Application handlers for platform-scoped tenant commands. Each command authorizes first, keeps
- * the pure aggregate free of persistence concerns and performs every write through one unit of
- * work, so the tenant change, its audit fact and its outbox event succeed or fail together.
+ * Application handlers for platform-scoped tenant commands. Each command validates trusted input,
+ * authorizes before any replay lookup and performs the idempotency claim, tenant change, audit fact,
+ * outbox event and stored response through one unit of work so they succeed or fail together.
  */
 export function createTenantCommands(dependencies: TenantCommandDependencies) {
   const { persistence, authorizer, clock, audit } = dependencies;
+  const executeIdempotently = createPlatformIdempotentExecutor({ persistence, clock });
   const eventDependencies = (now: Date) => ({
     clock: () => now,
     ...(dependencies.newEventId === undefined ? {} : { newEventId: dependencies.newEventId }),
@@ -77,9 +127,11 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
     await authorizer.assertAllowed(context, permission);
   }
 
-  async function provision(context: Readonly<PlatformCommandContext>, input: ProvisionTenantInput): Promise<Readonly<TenantSnapshot>> {
-    await authorize(context, "tenant:provision");
-
+  async function provision(
+    context: Readonly<PlatformCommandContext>,
+    input: ProvisionTenantInput,
+    metadata: TenantCommandMetadata = {},
+  ): Promise<Readonly<TenantSnapshot>> {
     const id = tenantId(input.tenantId);
     const administrator = actorId(input.initialAdministratorActorId);
     const now = clock();
@@ -89,8 +141,15 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
       eventInputFor(change, { display_name: change.tenant.displayName, new_state: change.tenant.state }),
       eventDependencies(now),
     );
-    await persistence.runInTransaction(
-      { tenantId: id, correlationId: context.correlationId, ...(context.causationId === undefined ? {} : { causationId: context.causationId }) },
+    const result = await executeIdempotently(
+      context,
+      id,
+      {
+        scope: "tenant.provision",
+        key: metadata.idempotencyKey,
+        payload: { display_name: change.tenant.displayName, initial_administrator_actor_id: administrator },
+      },
+      () => authorize(context, "tenant:provision"),
       async (unitOfWork) => {
         await unitOfWork.tenants.insert(change.tenant);
         await unitOfWork.roles.insertDefaultAdministratorRole({ tenantId: id, roleCode: "tenant_administrator" });
@@ -102,18 +161,19 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
           after: { state: change.tenant.state, version: change.tenant.version, display_name: change.tenant.displayName },
         });
         await unitOfWork.outbox.append(envelope);
+        return storedTenant(change.tenant, 201);
       },
     );
-    return change.tenant;
+    return tenantFromStored(result.response, id, context.correlationId);
   }
 
   async function transition(
     context: Readonly<PlatformCommandContext>,
     input: TenantLifecycleInput,
     target: LifecycleTarget,
+    scope: "tenant.activate" | "tenant.suspend" | "tenant.reactivate" | "tenant.close",
+    metadata: TenantCommandMetadata = {},
   ): Promise<Readonly<TenantSnapshot>> {
-    await authorize(context, "tenant:manage_lifecycle");
-
     const reason = input.reason?.trim();
     if (REASON_REQUIRED.has(target) && (reason === undefined || reason.length === 0)) {
       throw problem({
@@ -126,8 +186,18 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
     const id = tenantId(input.tenantId);
     const now = clock();
 
-    return persistence.runInTransaction(
-      { tenantId: id, correlationId: context.correlationId, ...(context.causationId === undefined ? {} : { causationId: context.causationId }) },
+    const result = await executeIdempotently(
+      context,
+      id,
+      {
+        scope,
+        key: metadata.idempotencyKey,
+        payload: {
+          expected_version: input.expectedVersion,
+          ...(reason === undefined || reason.length === 0 ? {} : { reason }),
+        },
+      },
+      () => authorize(context, "tenant:manage_lifecycle"),
       async (unitOfWork) => {
         const current = await unitOfWork.tenants.findById(id);
         if (current === undefined) {
@@ -150,16 +220,21 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
             eventDependencies(now),
           ),
         );
-        return change.tenant;
+        return storedTenant(change.tenant, 200);
       },
     );
+    return tenantFromStored(result.response, id, context.correlationId);
   }
 
   return Object.freeze({
     provisionTenant: provision,
-    activateTenant: (context: Readonly<PlatformCommandContext>, input: TenantLifecycleInput) => transition(context, input, "ACTIVE"),
-    suspendTenant: (context: Readonly<PlatformCommandContext>, input: TenantLifecycleInput) => transition(context, input, "SUSPENDED"),
-    reactivateTenant: (context: Readonly<PlatformCommandContext>, input: TenantLifecycleInput) => transition(context, input, "ACTIVE"),
-    closeTenant: (context: Readonly<PlatformCommandContext>, input: TenantLifecycleInput) => transition(context, input, "CLOSED"),
+    activateTenant: (context: Readonly<PlatformCommandContext>, input: TenantLifecycleInput, metadata?: TenantCommandMetadata) =>
+      transition(context, input, "ACTIVE", "tenant.activate", metadata),
+    suspendTenant: (context: Readonly<PlatformCommandContext>, input: TenantLifecycleInput, metadata?: TenantCommandMetadata) =>
+      transition(context, input, "SUSPENDED", "tenant.suspend", metadata),
+    reactivateTenant: (context: Readonly<PlatformCommandContext>, input: TenantLifecycleInput, metadata?: TenantCommandMetadata) =>
+      transition(context, input, "ACTIVE", "tenant.reactivate", metadata),
+    closeTenant: (context: Readonly<PlatformCommandContext>, input: TenantLifecycleInput, metadata?: TenantCommandMetadata) =>
+      transition(context, input, "CLOSED", "tenant.close", metadata),
   });
 }

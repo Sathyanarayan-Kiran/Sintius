@@ -104,8 +104,8 @@
             "BL-001-02"
           ],
           "implementation": "in_progress",
-          "progress": 75,
-          "notes": "Transaction-aware executor, deterministic SHA-256 canonical hashing, authorization before lookup, payload-conflict 409, mandatory validated key, seven-day default retention and purge port are implemented. The real PostgreSQL idempotency_record adapter uses the tenant/scope/key primary key as its serialization point and shares the protected command transaction. Integration tests prove exact replay with one durable effect, claim rollback on effect failure, a 12-request concurrent duplicate race with one winner, payload conflict, and same-key tenant isolation under forced RLS. Remaining: wrap concrete tenant lifecycle entry points, HTTP ingress (Idempotency-Key, Retry-After, ETag), deterministic failed-final responses, per-tenant retention source and PostgreSQL cleanup job, and replay/conflict/pending-age metrics.",
+          "progress": 85,
+          "notes": "Transaction-aware executor, deterministic SHA-256 canonical hashing, authorization before lookup, payload-conflict 409, mandatory validated key, seven-day default retention and purge port are implemented. The PostgreSQL adapter uses the tenant/scope/key primary key as its serialization point and shares the protected command transaction. All tenant provisioning and lifecycle entry points now require command metadata carrying the idempotency key. Unit and PostgreSQL tests prove exact replay, current authorization before replay, rollback, payload conflict, a 12-request adapter race, tenant isolation and concurrent provisioning with exactly one tenant/default-role/admin/audit/outbox/result commit. Remaining: HTTP ingress and response headers, deterministic failed-final responses, per-tenant retention source and cleanup job, and replay/conflict/pending-age metrics.",
           "acceptance": [
             "An identical retry with the same tenant, command, key and payload returns the original response without another effect.",
             "Reusing the key with a different canonical payload returns a 409 conflict.",
@@ -205,8 +205,8 @@
             "BL-001-03"
           ],
           "implementation": "in_progress",
-          "progress": 50,
-          "notes": "Outbox writer/store/publisher/inbox ports with adapter contracts, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer wrapper (dedup per consumer and tenant, rolled back with the handler) are implemented and unit-tested against an in-memory double. The first PostgreSQL migration includes an RLS-protected outbox_event table with INSERT-only application permission, and tenant provisioning integration tests prove the domain mutation and envelope commit or roll back together. Both roadmap tests remain partial because there is no PostgreSQL leasing/inbox adapter and no real broker/crash proof. Dead-letter policy: a dead-lettered event blocks later events of the SAME aggregate (order over liveness); the dispatcher never skips on its own. An authorized operator must requeue or skip it with a recorded reason and identity (skip keeps the envelope as evidence and unblocks the stream), and stats expose blocked streams and oldest dead-letter age for alerting. Dead-letter resolution needs the outbox:dead_letter:resolve permission (in the catalog) and is audited against the affected tenant in the same transaction. Remaining: consumer-side aggregate_version gap detection after a skip, PostgreSQL inbox table and SKIP LOCKED leasing adapter for the existing outbox table, real broker adapter (undecided), schema-registry validation at publish time, consumer-side retry/dead-letter queue, dispatcher runtime and lease-renewal, workload identity and RLS for the dispatcher role, oldest-age/attempt/dead-letter metrics export, retention.",
+          "progress": 55,
+          "notes": "Outbox writer/store/publisher/inbox ports with adapter contracts, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer wrapper are implemented and unit-tested. The RLS-protected PostgreSQL outbox_event table has INSERT-only application permission; real provisioning tests prove mutation, audit, idempotency result and outbox commit once or roll back together, so mutation/outbox atomicity is passing. Crash/replay remains partial because there is no PostgreSQL leasing/inbox adapter or real broker proof. Dead-lettered events block only their aggregate stream until authorized requeue or skip. Remaining: aggregate_version gap detection, PostgreSQL inbox and SKIP LOCKED leasing adapters, broker, schema validation, dispatcher runtime/lease renewal, dispatcher RLS identity, metrics and retention.",
           "acceptance": [
             "A domain mutation and its outbox record commit or roll back in one transaction.",
             "After a dispatcher failure, the event is retried and consumers deduplicate it by event ID."
@@ -216,7 +216,7 @@
               "id": "TC-001-03-01",
               "name": "Mutation/outbox atomicity",
               "type": "integration",
-              "status": "partial"
+              "status": "passing"
             },
             {
               "id": "TC-001-03-02",
@@ -10136,8 +10136,8 @@
             "BL-002-01"
           ],
           "implementation": "in_progress",
-          "progress": 85,
-          "notes": "Aggregate and application handlers (provision, activate, suspend, reactivate, close) now use a real PostgreSQL adapter. Integration tests prove atomic tenant/default-role/administrator/audit/outbox commit, full rollback after an injected failure, and database compare-and-set behavior under a concurrent lifecycle race. Remaining: wrap lifecycle entry points with platform idempotency, replace the platform-authorizer port with reviewed platform RBAC, and add HTTP ingress.",
+          "progress": 90,
+          "notes": "Aggregate and application handlers (provision, activate, suspend, reactivate, close) use the real PostgreSQL adapter and now execute through trusted platform-scoped idempotency. Tests prove atomic tenant/default-role/administrator/audit/outbox/result commit, replay without repeated effects, authorization before replay lookup, full rollback after injected failure, and database compare-and-set under a concurrent lifecycle race. Remaining: replace the platform-authorizer port with reviewed platform RBAC and add HTTP ingress.",
           "acceptance": [
             "Provisioning creates the tenant in PROVISIONING and valid commands move it only through the approved state graph.",
             "A stale version or forbidden transition is rejected; CLOSED is terminal.",
