@@ -1,13 +1,15 @@
-# Open decision proposals
+# Implementation decisions (D1–D12)
 
-**Status:** Proposed on 2026-09-24, awaiting Product Owner confirmation. Nothing here is final until it is confirmed and recorded in the [Decision Ledger](../decision-ledger.html).
-**Resolved on 2026-09-24:** TypeScript type checking (`tsc`) is added to the gate. Fastify 5 is the HTTP framework. The CI provider is still being explored (requirements in D12).
+**Status:** All twelve recommendations **accepted by the Product Owner on 2026-09-24** ("accept all"). D6 and D7 are also recorded in the [Decision Ledger](../decision-ledger.html) (`rounding-proration`, `primary-key-scheme`); the others are recorded here.
+**Also resolved on 2026-09-24:** TypeScript type checking (`tsc`) is in the gate. Fastify 5 is the HTTP framework. The CI provider is still being explored (requirements in D12).
+
+The **Recommendation** column is the accepted decision. The option tables are kept as the rationale.
 
 Each item lists options, a recommendation and what confirming it unblocks. Where current code already embodies a choice, the item says so. "Accept as recommended" is a valid answer for any item.
 
 ## Summary
 
-| ID | Decision | Recommendation | Blocks |
+| ID | Decision | Recommendation (accepted) | Blocks |
 |---|---|---|---|
 | D1 | Publish-side dead-letter policy | A: keep per-stream blocking; add per-consumer DLQs separately | Outbox completion (BL-001-03) |
 | D2 | `Idempotency-Key` format | A: RFC 9562 UUID at the HTTP boundary | API contract freeze |
