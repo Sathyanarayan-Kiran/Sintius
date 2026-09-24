@@ -1,5 +1,6 @@
 import type { EventEnvelope } from "../../event-envelope/src/index.ts";
 import type {
+  DeadLetterInfo,
   InboxPersistence,
   InboxStore,
   LeaseRequest,
@@ -114,9 +115,9 @@ export class InMemoryOutbox implements OutboxStore, InboxPersistence<TestUnitOfW
     return true;
   }
 
-  async resolveDeadLetter(input: { entryId: string; action: "requeue" | "skip"; operatorId: string; reason: string; now: string }): Promise<boolean> {
+  async resolveDeadLetter(input: { entryId: string; action: "requeue" | "skip"; operatorId: string; reason: string; now: string }): Promise<DeadLetterInfo | undefined> {
     const entry = this.entries.find((candidate) => candidate.entryId === input.entryId);
-    if (entry === undefined || entry.status !== "dead") return false;
+    if (entry === undefined || entry.status !== "dead") return undefined;
     entry.resolution = { action: input.action, operatorId: input.operatorId, reason: input.reason, resolvedAt: input.now };
     if (input.action === "skip") {
       entry.status = "skipped";
@@ -125,7 +126,14 @@ export class InMemoryOutbox implements OutboxStore, InboxPersistence<TestUnitOfW
       entry.attempts = 0;
       entry.nextAttemptAt = input.now;
     }
-    return true;
+    return {
+      entryId: entry.entryId,
+      tenantId: entry.envelope.tenant_id as never,
+      eventId: entry.envelope.id,
+      eventType: entry.envelope.type,
+      aggregateType: entry.envelope.aggregate_type,
+      aggregateId: entry.envelope.aggregate_id,
+    };
   }
 
   async stats(now: string): Promise<OutboxStats> {

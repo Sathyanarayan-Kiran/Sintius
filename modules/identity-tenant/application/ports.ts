@@ -1,6 +1,7 @@
+import type { AuditWriter } from "../../../platform/audit/src/index.ts";
 import type { EventEnvelope } from "../../../platform/event-envelope/src/index.ts";
 import type { ActorId, PlatformCommandContext, TenantId } from "../../../platform/tenant-context/src/index.ts";
-import type { TenantSnapshot, TenantState } from "../domain/tenant.ts";
+import type { TenantSnapshot } from "../domain/tenant.ts";
 
 /**
  * Ports owned by the identity-tenant module. Adapters live in infrastructure and are composed at
@@ -45,31 +46,6 @@ export interface TenantMembershipRepository {
   insertInitialAdministrator(record: Readonly<InitialAdministratorRecord>): Promise<void>;
 }
 
-export type TenantAuditAction = "tenant.provisioned" | "tenant.activated" | "tenant.suspended" | "tenant.closed";
-
-export interface TenantAuditState {
-  readonly state: TenantState;
-  readonly version: number;
-}
-
-/** Allow-listed, secret-free audit evidence; the audit-governance adapter persists it append-only. */
-export interface TenantAuditRecord {
-  readonly action: TenantAuditAction;
-  readonly actorId: ActorId;
-  readonly targetType: "Tenant";
-  readonly targetId: TenantId;
-  readonly correlationId: string;
-  readonly causationId?: string;
-  readonly occurredAt: string;
-  readonly before?: TenantAuditState;
-  readonly after: TenantAuditState;
-  readonly reason?: string;
-}
-
-export interface TenantAuditWriter {
-  append(record: Readonly<TenantAuditRecord>): Promise<void>;
-}
-
 export interface TenantOutboxWriter {
   append(envelope: Readonly<EventEnvelope>): Promise<void>;
 }
@@ -79,7 +55,7 @@ export interface TenantUnitOfWork {
   readonly tenants: TenantRepository;
   readonly roles: TenantRoleRepository;
   readonly memberships: TenantMembershipRepository;
-  readonly audit: TenantAuditWriter;
+  readonly audit: AuditWriter;
   readonly outbox: TenantOutboxWriter;
 }
 

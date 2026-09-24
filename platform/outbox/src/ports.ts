@@ -1,4 +1,5 @@
 import type { EventEnvelope } from "../../event-envelope/src/index.ts";
+import type { TenantId } from "../../tenant-context/src/index.ts";
 
 export type OutboxStatus = "pending" | "leased" | "published" | "dead" | "skipped";
 
@@ -10,6 +11,16 @@ export interface DeadLetterResolution {
   readonly operatorId: string;
   readonly reason: string;
   readonly resolvedAt: string;
+}
+
+/** What the resolution store reports back, so the caller can audit against the right tenant. */
+export interface DeadLetterInfo {
+  readonly entryId: string;
+  readonly tenantId: TenantId;
+  readonly eventId: string;
+  readonly eventType: string;
+  readonly aggregateType: string;
+  readonly aggregateId: string;
 }
 
 /** A stream is the ordering scope: (tenant, aggregate type, aggregate id). */
@@ -79,7 +90,7 @@ export interface OutboxStore {
     readonly retryAt?: string;
   }): Promise<boolean>;
   /**
-   * Operator control, valid only for a dead entry (returns false otherwise). "requeue" returns it to
+   * Operator control, valid only for a dead entry (returns undefined otherwise). "requeue" returns it to
    * pending with a fresh attempt budget. "skip" marks it terminal so later events of its stream can
    * flow; the envelope and the resolution stay on record. Both persist the resolution evidence.
    */
@@ -89,7 +100,7 @@ export interface OutboxStore {
     readonly operatorId: string;
     readonly reason: string;
     readonly now: string;
-  }): Promise<boolean>;
+  }): Promise<DeadLetterInfo | undefined>;
   stats(now: string): Promise<OutboxStats>;
 }
 

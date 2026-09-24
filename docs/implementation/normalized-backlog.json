@@ -206,7 +206,7 @@
           ],
           "implementation": "in_progress",
           "progress": 45,
-          "notes": "Outbox writer/store/publisher/inbox ports with adapter contracts, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer wrapper (dedup per consumer and tenant, rolled back with the handler) are implemented and unit-tested against an in-memory double. Both tests stay partial: atomicity is modeled, not proven against a real database, and no broker or crash is real. Dead-letter policy: a dead-lettered event blocks later events of the SAME aggregate (order over liveness); the dispatcher never skips on its own. An authorized operator must requeue or skip it with a recorded reason and identity (skip keeps the envelope as evidence and unblocks the stream), and stats expose blocked streams and oldest dead-letter age for alerting. Remaining: operator permission catalog entry and audit linkage for dead-letter resolution (P0-005/P0-008), consumer-side aggregate_version gap detection after a skip, PostgreSQL outbox/inbox tables and SKIP LOCKED leasing adapter, real broker adapter (undecided), schema-registry validation at publish time, consumer-side retry/dead-letter queue, dispatcher runtime and lease-renewal, workload identity and RLS for the dispatcher role, oldest-age/attempt/dead-letter metrics export, retention.",
+          "notes": "Outbox writer/store/publisher/inbox ports with adapter contracts, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer wrapper (dedup per consumer and tenant, rolled back with the handler) are implemented and unit-tested against an in-memory double. Both tests stay partial: atomicity is modeled, not proven against a real database, and no broker or crash is real. Dead-letter policy: a dead-lettered event blocks later events of the SAME aggregate (order over liveness); the dispatcher never skips on its own. An authorized operator must requeue or skip it with a recorded reason and identity (skip keeps the envelope as evidence and unblocks the stream), and stats expose blocked streams and oldest dead-letter age for alerting. Dead-letter resolution needs the outbox:dead_letter:resolve permission (in the catalog) and is audited against the affected tenant in the same transaction. Remaining: consumer-side aggregate_version gap detection after a skip, PostgreSQL outbox/inbox tables and SKIP LOCKED leasing adapter, real broker adapter (undecided), schema-registry validation at publish time, consumer-side retry/dead-letter queue, dispatcher runtime and lease-renewal, workload identity and RLS for the dispatcher role, oldest-age/attempt/dead-letter metrics export, retention.",
           "acceptance": [
             "A domain mutation and its outbox record commit or roll back in one transaction.",
             "After a dispatcher failure, the event is retried and consumers deduplicate it by event ID."
@@ -35133,9 +35133,9 @@
           "backlog": [
             "BL-017-01"
           ],
-          "implementation": "not_started",
-          "progress": 0,
-          "notes": "",
+          "implementation": "in_progress",
+          "progress": 45,
+          "notes": "Shared platform/audit package implemented and unit-tested: immutable deep-frozen AuditEvent stamped only from the trusted tenant or platform context, deny-by-default per-target allow-list snapshots with secret-like field names unlistable and values redacted, SHA-256 evidence hash with tamper verification, an append-only writer port, failure that blocks the command and pages operators, and a permissioned, tenant-scoped, paged audit reader whose reads are themselves audited. Tenant lifecycle, role administration, approval and dead-letter resolution commands now write through it in the same unit of work. Both tests stay partial: atomicity and immutability are modeled by an in-memory double, and database-privilege immutability (no UPDATE/DELETE grant), RLS and the audit_event table do not exist yet. Remaining: PostgreSQL adapter, migration and grants, hash chaining or anchoring decision, retention policy (jurisdiction decision pending), audit:read wiring at ingress, command metadata capture (reason, approval id) at the API, other modules adopting the recorder, audit-write-failure paging integration, log/trace secret scan gate.",
           "acceptance": [
             "Every material mutation records actor, action, reason, correlation and safe before/after evidence in the same transaction.",
             "Application roles cannot update or delete audit rows.",
@@ -35164,13 +35164,13 @@
               "id": "TC-017-01-01",
               "name": "Mutation/audit atomicity",
               "type": "integration",
-              "status": "not_run"
+              "status": "partial"
             },
             {
               "id": "TC-017-01-02",
               "name": "Audit immutability and redaction",
               "type": "security",
-              "status": "not_run"
+              "status": "partial"
             }
           ],
           "epicId": "SUB-E017",

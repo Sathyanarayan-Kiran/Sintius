@@ -1,3 +1,4 @@
+import type { AuditRecorder } from "../../../platform/audit/src/index.ts";
 import { randomUUID } from "node:crypto";
 import { buildEventEnvelope } from "../../../platform/event-envelope/src/index.ts";
 import { problem } from "../../../platform/problem-model/src/index.ts";
@@ -10,7 +11,12 @@ import {
   type ApprovalRequest,
   type ApprovalTarget,
 } from "../domain/approval.ts";
-import type { ApprovalAuditAction, ApprovalAuthorizer, ApprovalPersistence, ApprovalUnitOfWork } from "./approval-ports.ts";
+import type { ApprovalAuthorizer, ApprovalPersistence, ApprovalUnitOfWork } from "./approval-ports.ts";
+
+/** Evidence fields allowed in approval audit snapshots. */
+export const APPROVAL_AUDIT_FIELDS = Object.freeze({
+  ApprovalRequest: Object.freeze(["action_type", "target_id", "status", "version", "decision", "resulting_status", "previous_version"]),
+});
 
 export interface DecideApprovalCommand {
   readonly approvalId: string;
@@ -34,6 +40,7 @@ export interface CancelApprovalCommand {
 export function createApprovalCommands(dependencies: {
   readonly persistence: ApprovalPersistence;
   readonly authorizer: ApprovalAuthorizer;
+  readonly audit: AuditRecorder;
   readonly clock: () => Date;
   readonly newApprovalId?: () => string;
   readonly newEventId?: () => string;
@@ -48,22 +55,19 @@ export function createApprovalCommands(dependencies: {
   async function record(
     unitOfWork: ApprovalUnitOfWork,
     request: Readonly<ApprovalRequest>,
-    action: ApprovalAuditAction,
+    action: string,
     eventType: string,
     now: Date,
     details: Record<string, string | number>,
+    reason?: string,
   ): Promise<void> {
-    const context = currentTenantContext();
-    await unitOfWork.audit.append({
+    await dependencies.audit.recordForCurrentContext(unitOfWork.audit, {
       action,
-      tenantId: context.tenantId,
-      actorId: context.actorId,
-      targetType: "ApprovalRequest",
-      targetId: request.id,
-      correlationId: context.correlationId,
-      ...(context.causationId === undefined ? {} : { causationId: context.causationId }),
-      occurredAt: now.toISOString(),
-      details,
+      target: { type: "ApprovalRequest", id: request.id },
+      approvalId: request.id,
+      occurredAt: now,
+      ...(reason === undefined ? {} : { reason }),
+      after: { ...details, status: request.status, version: request.version },
     });
     await unitOfWork.outbox.append(
       buildEventEnvelope(
@@ -143,7 +147,7 @@ export function createApprovalCommands(dependencies: {
         decision: input.decision,
         resulting_status: next.status,
         previous_version: current.version,
-      });
+      }, input.reason);
       return next;
     });
   }

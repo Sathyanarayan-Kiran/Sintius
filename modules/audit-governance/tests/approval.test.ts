@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PlatformProblem } from "../../../platform/problem-model/src/index.ts";
 import { actorId, currentTenantContext, resolveTenantContext, runWithTenantContext, tenantId, type TenantId } from "../../../platform/tenant-context/src/index.ts";
-import { createApprovalCommands } from "../application/approval-commands.ts";
+import { createAuditPolicy, createAuditRecorder } from "../../../platform/audit/src/index.ts";
+import { APPROVAL_AUDIT_FIELDS, createApprovalCommands } from "../application/approval-commands.ts";
 import type { ApprovalAuthorizer } from "../application/approval-ports.ts";
 import { cancelApproval, decideApproval, expireApproval, proposeApproval, type ApprovalPolicy, type ApprovalTarget } from "../domain/approval.ts";
 import { InMemoryApprovalStore } from "./in-memory-approvals.ts";
@@ -71,7 +72,8 @@ function fixture() {
   });
   let ids = 0;
   let events = 0;
-  const commands = createApprovalCommands({ persistence: store, authorizer, clock: () => NOW, newApprovalId: () => `apr_${++ids}`, newEventId: () => `evt_${++events}` });
+  const audit = createAuditRecorder({ policy: createAuditPolicy(APPROVAL_AUDIT_FIELDS), clock: () => NOW, newId: () => `aud_${++events}` });
+  const commands = createApprovalCommands({ persistence: store, authorizer, audit, clock: () => NOW, newApprovalId: () => `apr_${++ids}`, newEventId: () => `evt_${++events}` });
   return { store, authorizer, commands };
 }
 
@@ -150,7 +152,7 @@ test("TC-002-03-02 propose then second-party approve commits decision, audit and
   const approved = await runWithTenantContext(contextFor(A, "checker_1"), () => commands.decideApproval(decision(request.id)));
   assert.equal(approved.status, "APPROVED");
   assert.deepEqual(
-    store.committed.audit.map((row) => [row.action, row.actorId]),
+    store.committed.audit.map((row) => [row.action, row.actor.id]),
     [["approval.requested", "maker_1"], ["approval.approved", "checker_1"]],
   );
   assert.deepEqual(

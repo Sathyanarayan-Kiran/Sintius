@@ -1,5 +1,6 @@
+import type { AuditWriter } from "../../../platform/audit/src/index.ts";
 import type { EventEnvelope } from "../../../platform/event-envelope/src/index.ts";
-import type { ActorId, TenantId } from "../../../platform/tenant-context/src/index.ts";
+import type { TenantId } from "../../../platform/tenant-context/src/index.ts";
 import type { ApprovalPolicy, ApprovalRequest } from "../domain/approval.ts";
 
 /**
@@ -23,24 +24,10 @@ export interface ApprovalRepository {
   update(request: Readonly<ApprovalRequest>, expectedVersion: number): Promise<void>;
 }
 
-export type ApprovalAuditAction = "approval.requested" | "approval.approved" | "approval.rejected" | "approval.cancelled";
-
-export interface ApprovalAuditRecord {
-  readonly action: ApprovalAuditAction;
-  readonly tenantId: TenantId;
-  readonly actorId: ActorId;
-  readonly targetType: "ApprovalRequest";
-  readonly targetId: string;
-  readonly correlationId: string;
-  readonly causationId?: string;
-  readonly occurredAt: string;
-  readonly details: Readonly<Record<string, string | number>>;
-}
-
 export interface ApprovalUnitOfWork {
   readonly policies: ApprovalPolicyReader;
   readonly approvals: ApprovalRepository;
-  readonly audit: { append(record: Readonly<ApprovalAuditRecord>): Promise<void> };
+  readonly audit: AuditWriter;
   readonly outbox: { append(envelope: Readonly<EventEnvelope>): Promise<void> };
 }
 

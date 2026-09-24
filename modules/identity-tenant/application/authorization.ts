@@ -1,3 +1,4 @@
+import type { AuditRecorder } from "../../../platform/audit/src/index.ts";
 import { buildEventEnvelope } from "../../../platform/event-envelope/src/index.ts";
 import { problem } from "../../../platform/problem-model/src/index.ts";
 import { actorId, currentTenantContext } from "../../../platform/tenant-context/src/index.ts";
@@ -45,6 +46,9 @@ export function createTenantAuthorizer(dependencies: { readonly grants: Permissi
   return Object.freeze({ hasPermission, assertPermission });
 }
 
+/** Evidence fields allowed in role-assignment audit snapshots. */
+export const ROLE_AUDIT_FIELDS = Object.freeze({ RoleAssignment: Object.freeze(["role_code"]) });
+
 export type TenantAuthorizer = ReturnType<typeof createTenantAuthorizer>;
 
 export interface RoleAssignmentInput {
@@ -59,6 +63,7 @@ export interface RoleAssignmentInput {
 export function createRoleAdministration(dependencies: {
   readonly persistence: SecurityPersistence;
   readonly authorizer: TenantAuthorizer;
+  readonly audit: AuditRecorder;
   readonly clock: () => Date;
   readonly newEventId?: () => string;
 }) {
@@ -85,16 +90,11 @@ export function createRoleAdministration(dependencies: {
         if (kind === "assigned") await unitOfWork.assignments.insert(context.tenantId, target, input.roleCode);
         else await unitOfWork.assignments.remove(context.tenantId, target, input.roleCode);
 
-        await unitOfWork.audit.append({
+        await dependencies.audit.recordForCurrentContext(unitOfWork.audit, {
           action: kind === "assigned" ? "role.assigned" : "role.revoked",
-          tenantId: context.tenantId,
-          actorId: context.actorId,
-          targetType: "RoleAssignment",
-          targetId: target,
-          correlationId: context.correlationId,
-          ...(context.causationId === undefined ? {} : { causationId: context.causationId }),
-          occurredAt: now.toISOString(),
-          details: { role_code: input.roleCode },
+          target: { type: "RoleAssignment", id: target },
+          occurredAt: now,
+          after: { role_code: input.roleCode },
         });
         await unitOfWork.outbox.append(
           buildEventEnvelope(

@@ -63,6 +63,8 @@ test("TC-001-05-01 the problem catalog is a stable published contract", () => {
     ["request_in_progress", 409, "Request in progress"],
     ["dead_letter_not_resolvable", 409, "Dead letter not resolvable"],
     ["dead_letter_reason_required", 422, "Reason required"],
+    ["audit_policy_missing", 500, "Audit policy missing"],
+    ["audit_event_invalid", 500, "Audit event invalid"],
     ["tenant_context_missing", 500, "Tenant context required"],
     ["tenant_context_mismatch", 500, "Tenant context mismatch"],
     ["internal_error", 500, "Internal error"],

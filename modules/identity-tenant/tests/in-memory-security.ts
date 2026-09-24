@@ -1,3 +1,4 @@
+import type { AuditEvent } from "../../../platform/audit/src/index.ts";
 import type { EventEnvelope } from "../../../platform/event-envelope/src/index.ts";
 import { problem } from "../../../platform/problem-model/src/index.ts";
 import type { ActorId, TenantId } from "../../../platform/tenant-context/src/index.ts";
@@ -5,7 +6,6 @@ import type {
   PermissionConstraintStore,
   PermissionGrantStore,
   RoleAdministrationUnitOfWork,
-  SecurityAuditRecord,
   SecurityPersistence,
 } from "../application/authorization-ports.ts";
 import type { PermissionConstraint, RoleSnapshot } from "../domain/authorization.ts";
@@ -17,7 +17,7 @@ import type { PermissionConstraint, RoleSnapshot } from "../domain/authorization
 interface Store {
   roles: Map<string, RoleSnapshot>;
   assignments: Set<string>;
-  audit: SecurityAuditRecord[];
+  audit: AuditEvent[];
   outbox: EventEnvelope[];
 }
 

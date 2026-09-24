@@ -1,3 +1,4 @@
+import type { AuditRecorder } from "../../../platform/audit/src/index.ts";
 import { buildEventEnvelopeFor, eventScopeForPlatformCommand, type BuildEventInput } from "../../../platform/event-envelope/src/index.ts";
 import { problem } from "../../../platform/problem-model/src/index.ts";
 import {
@@ -9,8 +10,6 @@ import {
 import { provisionTenant, transitionTenant, type TenantChange, type TenantSnapshot } from "../domain/tenant.ts";
 import type {
   PlatformAuthorizer,
-  TenantAuditAction,
-  TenantAuditRecord,
   TenantPersistence,
   TenantPlatformPermission,
 } from "./ports.ts";
@@ -18,6 +17,7 @@ import type {
 export interface TenantCommandDependencies {
   readonly persistence: TenantPersistence;
   readonly authorizer: PlatformAuthorizer;
+  readonly audit: AuditRecorder;
   readonly clock: () => Date;
   readonly newEventId?: () => string;
 }
@@ -39,9 +39,12 @@ type LifecycleTarget = "ACTIVE" | "SUSPENDED" | "CLOSED";
 
 const REASON_REQUIRED: ReadonlySet<LifecycleTarget> = new Set(["SUSPENDED", "CLOSED"]);
 
-function auditActionFor(change: TenantChange): TenantAuditAction {
-  return change.event.type.replace(/\.v[0-9]+$/, "") as TenantAuditAction;
+function auditActionFor(change: TenantChange): string {
+  return change.event.type.replace(/\.v[0-9]+$/, "");
 }
+
+/** Evidence fields allowed in tenant audit snapshots; composed into the platform audit policy at the app root. */
+export const TENANT_AUDIT_FIELDS = Object.freeze({ Tenant: Object.freeze(["state", "version", "display_name"]) });
 
 function eventInputFor(change: TenantChange, data: Record<string, unknown>): BuildEventInput {
   return {
@@ -63,7 +66,7 @@ function eventInputFor(change: TenantChange, data: Record<string, unknown>): Bui
  * work, so the tenant change, its audit fact and its outbox event succeed or fail together.
  */
 export function createTenantCommands(dependencies: TenantCommandDependencies) {
-  const { persistence, authorizer, clock } = dependencies;
+  const { persistence, authorizer, clock, audit } = dependencies;
   const eventDependencies = (now: Date) => ({
     clock: () => now,
     ...(dependencies.newEventId === undefined ? {} : { newEventId: dependencies.newEventId }),
@@ -86,24 +89,18 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
       eventInputFor(change, { display_name: change.tenant.displayName, new_state: change.tenant.state }),
       eventDependencies(now),
     );
-    const audit: TenantAuditRecord = {
-      action: auditActionFor(change),
-      actorId: context.actorId,
-      targetType: "Tenant",
-      targetId: id,
-      correlationId: context.correlationId,
-      ...(context.causationId === undefined ? {} : { causationId: context.causationId }),
-      occurredAt: change.event.occurredAt,
-      after: { state: change.tenant.state, version: change.tenant.version },
-    };
-
     await persistence.runInTransaction(
       { correlationId: context.correlationId, ...(context.causationId === undefined ? {} : { causationId: context.causationId }) },
       async (unitOfWork) => {
         await unitOfWork.tenants.insert(change.tenant);
         await unitOfWork.roles.insertDefaultAdministratorRole({ tenantId: id, roleCode: "tenant_administrator" });
         await unitOfWork.memberships.insertInitialAdministrator({ tenantId: id, actorId: administrator, roleCode: "tenant_administrator" });
-        await unitOfWork.audit.append(audit);
+        await audit.recordForPlatformCommand(unitOfWork.audit, context, id, {
+          action: auditActionFor(change),
+          target: { type: "Tenant", id },
+          occurredAt: new Date(change.event.occurredAt),
+          after: { state: change.tenant.state, version: change.tenant.version, display_name: change.tenant.displayName },
+        });
         await unitOfWork.outbox.append(envelope);
       },
     );
@@ -138,14 +135,10 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
         }
         const change = transitionTenant(current, target, input.expectedVersion, now);
         await unitOfWork.tenants.update(change.tenant, current.version);
-        await unitOfWork.audit.append({
+        await audit.recordForPlatformCommand(unitOfWork.audit, context, id, {
           action: auditActionFor(change),
-          actorId: context.actorId,
-          targetType: "Tenant",
-          targetId: id,
-          correlationId: context.correlationId,
-          ...(context.causationId === undefined ? {} : { causationId: context.causationId }),
-          occurredAt: change.event.occurredAt,
+          target: { type: "Tenant", id },
+          occurredAt: new Date(change.event.occurredAt),
           before: { state: current.state, version: current.version },
           after: { state: change.tenant.state, version: change.tenant.version },
           ...(reason === undefined || reason.length === 0 ? {} : { reason }),

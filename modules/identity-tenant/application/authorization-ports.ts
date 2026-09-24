@@ -1,3 +1,4 @@
+import type { AuditWriter } from "../../../platform/audit/src/index.ts";
 import type { EventEnvelope } from "../../../platform/event-envelope/src/index.ts";
 import type { ActorId, TenantId } from "../../../platform/tenant-context/src/index.ts";
 import type { Permission, PermissionConstraint, RoleSnapshot } from "../domain/authorization.ts";
@@ -27,25 +28,6 @@ export interface RoleAssignmentRepository {
   remove(tenantId: TenantId, actorId: ActorId, roleCode: string): Promise<void>;
 }
 
-export type SecurityAuditAction = "role.assigned" | "role.revoked";
-
-/** Allow-listed, secret-free evidence; `details` holds identifiers and codes only. */
-export interface SecurityAuditRecord {
-  readonly action: SecurityAuditAction;
-  readonly tenantId: TenantId;
-  readonly actorId: ActorId;
-  readonly targetType: string;
-  readonly targetId: string;
-  readonly correlationId: string;
-  readonly causationId?: string;
-  readonly occurredAt: string;
-  readonly details: Readonly<Record<string, string | number>>;
-}
-
-export interface SecurityAuditWriter {
-  append(record: Readonly<SecurityAuditRecord>): Promise<void>;
-}
-
 export interface SecurityOutboxWriter {
   append(envelope: Readonly<EventEnvelope>): Promise<void>;
 }
@@ -53,7 +35,7 @@ export interface SecurityOutboxWriter {
 export interface RoleAdministrationUnitOfWork {
   readonly roles: RoleCatalogRepository;
   readonly assignments: RoleAssignmentRepository;
-  readonly audit: SecurityAuditWriter;
+  readonly audit: AuditWriter;
   readonly outbox: SecurityOutboxWriter;
 }
 

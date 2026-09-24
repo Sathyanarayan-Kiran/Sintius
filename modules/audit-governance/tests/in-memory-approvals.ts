@@ -1,6 +1,7 @@
+import type { AuditEvent } from "../../../platform/audit/src/index.ts";
 import type { EventEnvelope } from "../../../platform/event-envelope/src/index.ts";
 import { problem } from "../../../platform/problem-model/src/index.ts";
-import type { ApprovalAuditRecord, ApprovalPersistence, ApprovalUnitOfWork } from "../application/approval-ports.ts";
+import type { ApprovalPersistence, ApprovalUnitOfWork } from "../application/approval-ports.ts";
 import type { ApprovalPolicy, ApprovalRequest } from "../domain/approval.ts";
 
 /**
@@ -9,7 +10,7 @@ import type { ApprovalPolicy, ApprovalRequest } from "../domain/approval.ts";
  */
 interface Store {
   approvals: Map<string, ApprovalRequest>;
-  audit: ApprovalAuditRecord[];
+  audit: AuditEvent[];
   outbox: EventEnvelope[];
 }
 

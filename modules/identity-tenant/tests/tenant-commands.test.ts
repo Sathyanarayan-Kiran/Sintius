@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PlatformProblem } from "../../../platform/problem-model/src/index.ts";
 import { resolvePlatformCommandContext } from "../../../platform/tenant-context/src/index.ts";
-import { createTenantCommands } from "../application/tenant-commands.ts";
+import { createAuditPolicy, createAuditRecorder, verifyAuditEvent } from "../../../platform/audit/src/index.ts";
+import { TENANT_AUDIT_FIELDS, createTenantCommands } from "../application/tenant-commands.ts";
 import { AllowListAuthorizer, InMemoryTenantPersistence } from "./in-memory-persistence.ts";
 
 const NOW = new Date("2026-09-23T10:00:00.000Z");
@@ -11,7 +12,8 @@ function setup(allowed: readonly ("tenant:provision" | "tenant:manage_lifecycle"
   const persistence = new InMemoryTenantPersistence();
   const authorizer = new AllowListAuthorizer(allowed);
   let counter = 0;
-  const commands = createTenantCommands({ persistence, authorizer, clock: () => NOW, newEventId: () => `evt_test_${++counter}` });
+  const audit = createAuditRecorder({ policy: createAuditPolicy(TENANT_AUDIT_FIELDS), clock: () => NOW, newId: () => `aud_test_${++counter}` });
+  const commands = createTenantCommands({ persistence, authorizer, audit, clock: () => NOW, newEventId: () => `evt_test_${++counter}` });
   const context = resolvePlatformCommandContext({
     principal: { kind: "user", actorId: "operator_1" },
     correlationId: "corr_1",
@@ -38,7 +40,10 @@ test("provisioning writes tenant, default role, initial admin, audit and outbox 
   assert.equal(persistence.committed.audit.length, 1);
   const audit = persistence.committed.audit[0]!;
   assert.equal(audit.action, "tenant.provisioned");
-  assert.equal(audit.actorId, "operator_1");
+  assert.equal(audit.actor.id, "operator_1");
+  assert.equal(audit.tenantId, "tenant_A", "a platform command audits against the target tenant");
+  assert.deepEqual(audit.after, { display_name: "Acme", state: "PROVISIONING", version: 1 });
+  assert.equal(verifyAuditEvent(audit), true);
   assert.equal(audit.correlationId, "corr_1");
   assert.equal(audit.causationId, "cause_1");
 

@@ -8,7 +8,8 @@ import {
   tenantId,
   type TenantId,
 } from "../../../platform/tenant-context/src/index.ts";
-import { createRoleAdministration, createTenantAuthorizer } from "../application/authorization.ts";
+import { createAuditPolicy, createAuditRecorder } from "../../../platform/audit/src/index.ts";
+import { ROLE_AUDIT_FIELDS, createRoleAdministration, createTenantAuthorizer } from "../application/authorization.ts";
 import {
   DEFAULT_TENANT_ADMINISTRATOR_PERMISSIONS,
   PERMISSION_CATALOG,
@@ -55,7 +56,8 @@ function fixture() {
   store.seedAssignment(B, actorId("admin_B"), "tenant_administrator");
   const authorizer = createTenantAuthorizer({ grants: store, constraints: store });
   let counter = 0;
-  const roleAdmin = createRoleAdministration({ persistence: store, authorizer, clock: () => NOW, newEventId: () => `evt_${++counter}` });
+  const audit = createAuditRecorder({ policy: createAuditPolicy(ROLE_AUDIT_FIELDS), clock: () => NOW, newId: () => `aud_${++counter}` });
+  const roleAdmin = createRoleAdministration({ persistence: store, authorizer, audit, clock: () => NOW, newEventId: () => `evt_${++counter}` });
   return { store, authorizer, roleAdmin };
 }
 
@@ -138,6 +140,8 @@ test("role administration assigns, revokes and audits atomically; revocation app
   assert.deepEqual(store.committed.audit.map((row) => row.action), ["role.assigned", "role.revoked"]);
   assert.deepEqual(store.committed.outbox.map((row) => row.type), ["com.subrevos.role.assigned.v1", "com.subrevos.role.revoked.v1"]);
   assert.equal(store.committed.outbox[0]!.tenant_id, "tenant_A");
+  assert.deepEqual(store.committed.audit[0]!.actor, { id: "admin_1", kind: "interactive" });
+  assert.deepEqual(store.committed.audit[0]!.after, { role_code: "finance_controller" });
 });
 
 test("role administration is restricted: non-admins denied, self-change blocked, cross-tenant roles invisible", async () => {

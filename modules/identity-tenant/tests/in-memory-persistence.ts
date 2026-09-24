@@ -1,10 +1,10 @@
+import type { AuditEvent } from "../../../platform/audit/src/index.ts";
 import type { EventEnvelope } from "../../../platform/event-envelope/src/index.ts";
 import { problem } from "../../../platform/problem-model/src/index.ts";
 import type {
   DefaultRoleRecord,
   InitialAdministratorRecord,
   PlatformAuthorizer,
-  TenantAuditRecord,
   TenantPersistence,
   TenantPlatformPermission,
   TenantUnitOfWork,
@@ -20,7 +20,7 @@ interface Store {
   tenants: Map<string, TenantSnapshot>;
   roles: DefaultRoleRecord[];
   memberships: InitialAdministratorRecord[];
-  audit: TenantAuditRecord[];
+  audit: AuditEvent[];
   outbox: EventEnvelope[];
 }
 

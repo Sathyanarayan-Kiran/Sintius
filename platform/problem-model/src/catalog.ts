@@ -37,6 +37,8 @@ export const PROBLEM_CATALOG = Object.freeze({
   request_in_progress: Object.freeze({ status: 409, title: "Request in progress" }),
   dead_letter_not_resolvable: Object.freeze({ status: 409, title: "Dead letter not resolvable" }),
   dead_letter_reason_required: Object.freeze({ status: 422, title: "Reason required" }),
+  audit_policy_missing: Object.freeze({ status: 500, title: "Audit policy missing" }),
+  audit_event_invalid: Object.freeze({ status: 500, title: "Audit event invalid" }),
   tenant_context_missing: Object.freeze({ status: 500, title: "Tenant context required" }),
   tenant_context_mismatch: Object.freeze({ status: 500, title: "Tenant context mismatch" }),
   internal_error: Object.freeze({ status: 500, title: "Internal error" }),

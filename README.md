@@ -11,6 +11,7 @@ This repository is the TypeScript/Node.js 24 LTS implementation of the canonical
 - Tenant-scoped RBAC (permission catalog, deny-by-default evaluator, fail-closed ABAC narrowing, role assignment) in Identity & Tenant and a maker-checker approval aggregate in Audit & Governance (separation of duties, MFA step-up, exact target matching). Both sit behind ports and are tested with in-memory doubles only; there is no PostgreSQL adapter yet.
 - Idempotent command execution: canonical request hashing, a transaction-aware executor and a store port (atomic claim, replay, payload-conflict 409, retention). Tested with an in-memory double only; the PostgreSQL adapter and concurrency proof remain outstanding.
 - Transactional outbox and inbox: ports, a leasing dispatcher with per-aggregate ordering, backoff and dead-lettering, and an idempotent consumer. In-memory double only; the PostgreSQL adapter and broker choice remain outstanding.
+- Append-only audit: an immutable, tamper-evident audit event stamped from trusted context, allow-list redaction, a permissioned reader whose reads are audited, and adoption by the tenant, role, approval and dead-letter commands. In-memory double only; database immutability controls remain outstanding.
 - Architecture manifest validation for bounded-context ownership.
 
 The implementation deliberately starts without third-party runtime dependencies. Node 24's native erasable-TypeScript support runs the initial tests directly; the build toolchain and framework are selected only when a concrete adapter needs them.

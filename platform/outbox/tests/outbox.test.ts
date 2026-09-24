@@ -3,7 +3,9 @@ import test from "node:test";
 import { buildEventEnvelopeFor, type EventEnvelope } from "../../event-envelope/src/index.ts";
 import { PlatformProblem } from "../../problem-model/src/index.ts";
 import { tenantId } from "../../tenant-context/src/index.ts";
-import { createDeadLetterOperations, createIdempotentConsumer, createOutboxDispatcher, defaultRetryDelaySeconds, type EventPublisher } from "../src/index.ts";
+import { createAuditPolicy, createAuditRecorder, verifyAuditEvent, type AuditEvent } from "../../audit/src/index.ts";
+import { actorId, resolvePlatformCommandContext } from "../../tenant-context/src/index.ts";
+import { OUTBOX_AUDIT_FIELDS, createDeadLetterOperations, createIdempotentConsumer, createOutboxDispatcher, defaultRetryDelaySeconds, type DeadLetterPersistence, type EventPublisher } from "../src/index.ts";
 import { InMemoryOutbox, type TestUnitOfWork } from "./in-memory-outbox.ts";
 
 const code = (expected: string) => (error: unknown) => error instanceof PlatformProblem && error.problem.code === expected;
@@ -41,6 +43,36 @@ class RecordingPublisher implements EventPublisher {
     }
     this.published.push(event);
   }
+}
+
+function deadLetterKit(outbox: InMemoryOutbox, iso: () => string, authorize: (action: string) => Promise<void> = async () => {}) {
+  const auditRows: AuditEvent[] = [];
+  const control = { failAudit: false };
+  const persistence: DeadLetterPersistence = {
+    runInTransaction: async (_scope, work) => {
+      const snapshot = structuredClone(outbox.entries);
+      const staged: AuditEvent[] = [];
+      try {
+        const result = await work({
+          outbox,
+          audit: { append: async (event) => { if (control.failAudit) throw new Error("audit store down"); staged.push(event); } },
+        });
+        auditRows.push(...staged);
+        return result;
+      } catch (error) {
+        outbox.entries.splice(0, outbox.entries.length, ...snapshot);
+        throw error;
+      }
+    },
+  };
+  let audits = 0;
+  const recorder = createAuditRecorder({ policy: createAuditPolicy(OUTBOX_AUDIT_FIELDS), clock: () => new Date(iso()), newId: () => `aud_${++audits}` });
+  const operations = createDeadLetterOperations({ persistence, audit: recorder, clock: () => new Date(iso()), authorize: authorize as never });
+  const context = resolvePlatformCommandContext({
+    principal: { actorId: actorId("operator_1"), kind: "interactive", tenantMemberships: [], assurance: "mfa" },
+    correlationId: "corr_dl",
+  });
+  return { operations, context, auditRows, control };
 }
 
 function harness(options: { workerId?: string; maxAttempts?: number } = {}) {
@@ -161,9 +193,11 @@ test("TC-001-03-04 a poison event is dead-lettered, blocks only its stream, and 
   assert.ok((stats.oldestUnpublishedAgeSeconds ?? 0) > 0);
 
   publisher.failures.set(poison.id, 0);
-  const operations = createDeadLetterOperations({ store: outbox, clock: () => new Date(iso()), authorize: async () => {} });
-  await operations({ entryId: "out_1", action: "requeue", operatorId: "operator_1", reason: "broker config fixed" });
-  await assert.rejects(operations({ entryId: "out_1", action: "requeue", operatorId: "operator_1", reason: "again" }), code("dead_letter_not_resolvable"));
+  const { operations, context, auditRows } = deadLetterKit(outbox, iso);
+  await operations(context, { entryId: "out_1", action: "requeue", reason: "broker config fixed" });
+  await assert.rejects(operations(context, { entryId: "out_1", action: "requeue", reason: "again" }), code("dead_letter_not_resolvable"));
+  assert.equal(auditRows.length, 1);
+  assert.equal(auditRows[0]!.action, "outbox.dead_letter_requeued");
   assert.equal(outbox.entries[0]!.resolution?.action, "requeue");
   await run();
   await run();
@@ -288,8 +322,17 @@ test("skipping a dead-lettered event unblocks its stream, keeps the evidence, an
   advance(3600);
   assert.equal((await run()).leased, 0, "blocked by default: order is never violated silently");
 
-  const operations = createDeadLetterOperations({ store: outbox, clock: () => new Date(iso()), authorize: async () => {} });
-  await operations({ entryId: "out_1", action: "skip", operatorId: "operator_1", reason: "malformed legacy event, downstream reconciled manually" });
+  const { operations, context, auditRows } = deadLetterKit(outbox, iso);
+  await operations(context, { entryId: "out_1", action: "skip", reason: "malformed legacy event, downstream reconciled manually" });
+  assert.equal(auditRows.length, 1);
+  const audited = auditRows[0]!;
+  assert.equal(audited.action, "outbox.dead_letter_skipped");
+  assert.equal(audited.tenantId, "tenant_A", "audited against the affected event tenant");
+  assert.deepEqual(audited.actor, { id: "operator_1", kind: "interactive" });
+  assert.equal(audited.reason, "malformed legacy event, downstream reconciled manually");
+  assert.equal(audited.after?.event_id, poison.id);
+  assert.equal(audited.after?.resolution, "skip");
+  assert.equal(verifyAuditEvent(audited), true);
 
   const skipped = outbox.entries[0]!;
   assert.equal(skipped.status, "skipped");
@@ -315,22 +358,23 @@ test("dead-letter resolution is authorized first, needs a reason, and only appli
   await dispatcher()();
 
   let authorized = 0;
-  const operations = createDeadLetterOperations({
-    store: outbox,
-    clock: () => new Date(iso()),
-    authorize: async (action) => {
-      authorized += 1;
-      if (action === "skip") throw new PlatformProblem({ code: "permission_denied", status: 403, title: "Permission denied", detail: "denied" });
-    },
+  const { operations, context, auditRows, control } = deadLetterKit(outbox, iso, async (action) => {
+    authorized += 1;
+    if (action === "skip") throw new PlatformProblem({ code: "permission_denied", status: 403, title: "Permission denied", detail: "denied" });
   });
 
-  await assert.rejects(operations({ entryId: "out_1", action: "skip", operatorId: "op", reason: "x" }), code("permission_denied"));
+  await assert.rejects(operations(context, { entryId: "out_1", action: "skip", reason: "x" }), code("permission_denied"));
   assert.equal(outbox.entries[0]!.status, "dead", "an unauthorized skip changes nothing");
-  await assert.rejects(operations({ entryId: "out_1", action: "requeue", operatorId: "op", reason: "   " }), code("dead_letter_reason_required"));
-  await assert.rejects(operations({ entryId: "out_2", action: "requeue", operatorId: "op", reason: "healthy entry" }), code("dead_letter_not_resolvable"));
-  await assert.rejects(operations({ entryId: "missing", action: "requeue", operatorId: "op", reason: "x" }), code("dead_letter_not_resolvable"));
-  await assert.rejects(operations({ entryId: "out_1", action: "delete" as never, operatorId: "op", reason: "x" }), code("invalid_trusted_context"));
-  await assert.rejects(operations({ entryId: "out_1", action: "requeue", operatorId: " ", reason: "x" }), code("invalid_trusted_context"));
-  assert.equal(authorized, 6, "authorization ran before every other check");
+  await assert.rejects(operations(context, { entryId: "out_1", action: "requeue", reason: "   " }), code("dead_letter_reason_required"));
+  await assert.rejects(operations(context, { entryId: "out_2", action: "requeue", reason: "healthy entry" }), code("dead_letter_not_resolvable"));
+  await assert.rejects(operations(context, { entryId: "missing", action: "requeue", reason: "x" }), code("dead_letter_not_resolvable"));
+  await assert.rejects(operations(context, { entryId: "out_1", action: "delete" as never, reason: "x" }), code("invalid_trusted_context"));
+  assert.equal(authorized, 5, "authorization ran before every other check");
+  assert.equal(outbox.entries[0]!.resolution, undefined);
+  assert.equal(auditRows.length, 0, "rejected attempts leave no audit event");
+
+  control.failAudit = true;
+  await assert.rejects(operations(context, { entryId: "out_1", action: "requeue", reason: "retry" }), /audit store down/);
+  assert.equal(outbox.entries[0]!.status, "dead", "an unaudited resolution is rolled back");
   assert.equal(outbox.entries[0]!.resolution, undefined);
 });
