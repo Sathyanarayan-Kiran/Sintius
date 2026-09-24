@@ -31,6 +31,9 @@ function collectingSink(): { reports: UnexpectedErrorReport[]; record(report: Un
 test("TC-001-05-01 the problem catalog is a stable published contract", () => {
   const golden: ReadonlyArray<readonly [string, number, string]> = [
     ["invalid_trusted_context", 400, "Invalid trusted context"],
+    ["request_validation_failed", 400, "Invalid request"],
+    ["resource_not_found", 404, "Resource not found"],
+    ["precondition_failed", 412, "Precondition failed"],
     ["authentication_failed", 401, "Authentication failed"],
     ["authentication_assurance_insufficient", 403, "Authentication assurance insufficient"],
     ["workload_scope_denied", 403, "Workload scope denied"],
@@ -67,6 +70,10 @@ test("TC-001-05-01 the problem catalog is a stable published contract", () => {
     ["audit_event_invalid", 500, "Audit event invalid"],
     ["tenant_context_missing", 500, "Tenant context required"],
     ["tenant_context_mismatch", 500, "Tenant context mismatch"],
+    ["invalid_decimal", 422, "Invalid decimal"],
+    ["calculation_rejected", 422, "Calculation rejected"],
+    ["unsupported_currency", 422, "Unsupported currency"],
+    ["currency_mismatch", 422, "Currency mismatch"],
     ["internal_error", 500, "Internal error"],
   ];
   const actual = Object.entries(PROBLEM_CATALOG).map(([code, entry]) => [code, entry.status, entry.title]);
@@ -291,4 +298,17 @@ test("TC-001-05-02 redaction covers credentials, tokens and Luhn-valid card numb
   assert.equal(redactSensitiveText("tenant tenant_A version 12"), "tenant tenant_A version 12");
   const long = redactSensitiveText("x".repeat(5000));
   assert.equal(long.length, 2000 + "...[truncated]".length);
+});
+
+test("TC-001-05-01 a retry hint becomes a Retry-After header and never enters the problem body", () => {
+  const response = mapErrorToProblemResponse(
+    problem({ code: "request_in_progress", detail: "Still processing.", retryAfterSeconds: 3 }),
+    { correlationId: "corr_retry_1" },
+  );
+  assert.equal(response.headers["retry-after"], "3");
+  assert.equal(Object.hasOwn(response.body, "retryAfterSeconds"), false);
+  for (const invalid of [0, -1, 1.5, Number.NaN]) {
+    const ignored = mapErrorToProblemResponse(problem({ code: "request_in_progress", detail: "x", retryAfterSeconds: invalid }));
+    assert.equal(Object.hasOwn(ignored.headers, "retry-after"), false, `ignores ${invalid}`);
+  }
 });

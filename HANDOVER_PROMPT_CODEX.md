@@ -20,24 +20,27 @@ Do not restart discovery or regenerate a smaller backlog.
 - Keep three statements separate in every report: "Backlog traceability: complete", "Implementation coverage: incomplete", "Automated execution: only what actually ran".
 - A mapped requirement is not implemented. A planned test is not a passing test. Never claim 100% from mapping percentages. Implementation evidence is 0 of 1,335 requirements; no durable evidence overlay exists yet for source-derived stories.
 - Do not reopen resolved decisions: TypeScript on Node.js 24 LTS, PostgreSQL, modular monolith with workers, transactional outbox/inbox, REST/OpenAPI, US/USD MVP.
-- Open decisions and spikes (SPIKE-02 decimal/money, SPIKE-03 ID scheme, SPIKE-05 usage throughput, SPIKE-06 rounding, Stripe scope, AI autonomy and identity-provider choices) need a written proposal and Product Owner confirmation. Do not silently choose. Local PostgreSQL execution is resolved as Docker Compose with PostgreSQL 17.
+- SPIKE-02 (money), SPIKE-06 (rounding), the ID scheme and the identity-adapter approach are decided (see decision-proposals.md). SPIKE-05 usage throughput, Stripe scope, AI autonomy and the IdP product still need a written proposal and Product Owner confirmation. Do not silently choose. Local PostgreSQL execution is resolved as Docker Compose with PostgreSQL 17.
 - Never mark a roadmap test `passing` unless the whole named behavior was demonstrated. A pure aggregate plus an in-memory double justifies `partial`, not `passing`.
 
 ## 2. Environment and repository
 
 - Windows. Use `npm.cmd run check`, `npm.cmd test`, `npm.cmd run check:postgres`, `npm.cmd run backlog:generate` (use `npm` on other shells). `check` = architecture, roadmap, requirement coverage, unit tests and PostgreSQL integration tests.
 - Code style: ESM and erasable TypeScript only (no enums, namespaces, parameter properties; use `import type`, `#private` fields, `import.meta.dirname`). Node runs TypeScript directly. Runtime dependency `pg` is pinned for PostgreSQL. Unit tests are imported from `tests/all.test.ts`; database integration tests stay in the explicit `test:postgres` suite so `npm test` remains usable without Docker.
-- **There is no type checker.** `tsc` is not installed and Node only strips types, so type errors are not caught by `npm run check`. Propose a TypeScript dev dependency to the Product Owner rather than adding it silently.
+- **Type checking is part of the gate.** `npm run typecheck` runs pinned TypeScript 7 (`tsconfig.json`: strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `erasableSyntaxOnly`) over apps, modules, platform, tools and tests. Keep it at zero errors.
+- **HTTP framework: Fastify 5 (Product Owner decision).** `apps/api/src/http/server.ts` is the ingress; `apps/api/src/composition/postgres.ts` is the PostgreSQL composition root. Framework types stay in `apps/api`; modules and platform packages must not import Fastify.
 - Modules must not import other modules' internals. `tools/architecture-lint` validates each `modules/*/module.json` (ownedTables, publishedEvents, allowedModuleDependencies). Shared code lives in `platform/`.
 - Git: branch `master`, remote `origin` = `https://github.com/Sathyanarayan-Kiran/Sintius.git`. Verify the current head with `git log -1 --oneline`; commit and push only when the user asks.
 - GitHub push protection scans for secret patterns. Do not put literal secret-shaped strings (for example `sk_test_...`) in source or tests, even fake or documented ones; build them at runtime (`"sk_" + "test_..."`). History was rewritten once to remove one; a local branch `backup-before-secret-fix` still holds the flagged string and must never be pushed.
 - Git prints many "LF will be replaced by CRLF" warnings on this machine; they are harmless.
 - Local database: Docker Compose runs PostgreSQL 17 on `127.0.0.1:54329`; `db:up` waits for health, `db:migrate` applies checksum-protected forward-only migrations, and `db:down` retains the named volume. Compose trust authentication is strictly local-development configuration.
-- Baseline: `npm run check` passes with **127 unit tests plus 10 PostgreSQL integration tests (137 total)**. Run it before editing and confirm.
+- Database roles: `sintius_admin` (migrations), `sintius_app` (NOBYPASSRLS application role, tenant-bound per transaction) and `sintius_dispatcher` (NOBYPASSRLS outbox relay: SELECT plus column-limited UPDATE on `outbox_event`, and INSERT into `audit_event` only for the tenant it binds after resolving a dead letter). Migrations are discovered under both `modules/*` and `platform/*`; names are globally ordered.
+- Baseline: `npm run check` passes typecheck plus **151 unit tests and 19 PostgreSQL integration tests (170 total)** across four PostgreSQL suite files run with `--test-concurrency=1`. Run it before editing and confirm.
+- Decisions D1–D12 in `docs/implementation/decision-proposals.md` were **all accepted on 2026-09-24**; treat their recommendations as binding. D2 (UUID idempotency keys), D5 (`platform/money`) and D6 (HALF_UP/ACTUAL_DAYS) are implemented. Still open: the SPIKE-03 confirmation benchmark and the text-to-uuid key migration (D7), `jose` and SAML-federation adapters (D8), the persona matrix draft (D9), token-exchange tenant selection (D10), platform operator identity (D11), consumer DLQs (D1), approver permissions on policies (D4), the last-administrator guard (D3), and the CI provider.
 
 ## 3. What exists (verify by reading; do not trust this list blindly)
 
-Most platform ports below are unit-tested against **in-memory test doubles**. The identity-tenant lifecycle is the exception: it has a real PostgreSQL adapter and integration evidence for transactions, forced RLS, rollback and concurrent compare-and-set. Do not generalize that evidence to idempotency, dispatcher/inbox, approval or audit-reader adapters that do not yet exist.
+Several platform ports are unit-tested against **in-memory test doubles**. PostgreSQL adapters with integration evidence exist for the identity-tenant lifecycle, idempotency, the foundation proof, the outbox dispatcher store, dead-letter resolution, the inbox and the RBAC grant lookup. Approval, role-administration and audit-reader adapters do not yet exist; do not generalize the evidence to them.
 
 ### platform/problem-model (P0-002 / US-BL-001-05, epic SUB-E001)
 RFC 7807/9457 problems with a frozen, contract-tested code catalog (`src/catalog.ts`), trace IDs, redaction (`redactSensitiveText`), and an error boundary. **Every `problem({ code })` literal must be registered in the catalog and the golden test in `tests/problem-model.test.ts`**; a repo-scan test enforces this. Tests TC-001-05-01/02 are `passing`.
@@ -52,7 +55,8 @@ CloudEvents-style envelope conforming to `docs/pre-implementation/contracts/even
 Deterministic canonical hashing, `IdempotencyStore` atomic-claim contract, `createIdempotentExecutor` and `createPlatformIdempotentExecutor`: validate key/scope, reject tenant identity in payload, **authorize before lookup**, and commit claim, work and response together. Migration 002 adds the forced-RLS PostgreSQL store; migration 003 defers its tenant FK so provisioning can claim before inserting the tenant in the same transaction. Every tenant provisioning/lifecycle entry point requires idempotency command metadata. Tests prove exact replay, current authorization on replay, rollback, payload conflict, tenant isolation, a 12-request adapter race, and concurrent provisioning with exactly one complete tenant/audit/outbox/result write set.
 
 ### platform/outbox (P0-007 / US-BL-001-03)
-`OutboxWriter`, `OutboxStore` (lease contract: at most one lease per aggregate stream, head-of-line blocking), `EventPublisher`, `InboxStore`; `createOutboxDispatcher` (ordered delivery, exponential backoff 5s doubling to 15 min, redacted errors, dead-lettering including crash-looping events, lease-loss handling); `createIdempotentConsumer` (dedup per consumer and tenant, rolled back with the handler); `createDeadLetterOperations` (operator requeue or skip).
+`OutboxWriter`, `OutboxStore` (lease contract: at most one lease per aggregate stream, head-of-line blocking), `EventPublisher`, `InboxStore`; `createOutboxDispatcher` (ordered delivery, exponential backoff 5s doubling to 15 min, redacted errors, dead-lettering including crash-looping events, lease-loss handling); `createIdempotentConsumer` (dedup per consumer and tenant, rolled back with the handler; `InboxPersistence.runInTransaction` now takes a scope with the envelope's tenant and correlation so adapters can bind RLS); `createDeadLetterOperations` (operator requeue or skip).
+PostgreSQL (`infrastructure/postgres/store.ts`, migration 005): `PostgresOutboxStore` leases only stream heads with `FOR UPDATE SKIP LOCKED` as `sintius_dispatcher`; `PostgresDeadLetterPersistence` resolves then binds the entry's tenant so the audit row passes RLS for that tenant only; `PostgresInboxPersistence` uses the forced-RLS `inbox_record` table and hands consumers a tenant-bound transaction handle. `tests/postgres-outbox.test.ts` proves ordering, a six-worker race, lease expiry, audited skip/requeue with rollback, the privilege matrix and concurrent inbox deduplication.
 **Dead-letter policy (a design choice of mine; confirm with the Product Owner):** a dead-lettered event blocks later events of the same aggregate (order over liveness); the dispatcher never skips by itself; an authorized operator must requeue or skip with a mandatory reason; skip keeps the envelope as evidence and unblocks the stream; resolution needs `outbox:dead_letter:resolve` and is audited against the affected tenant in the same transaction. `OutboxStats.blockedStreams` and `oldestDeadLetterAgeSeconds` are the alert signals. Modules still use their own structurally-compatible outbox-writer types rather than importing `OutboxWriter`.
 
 ### platform/audit (P0-008 / US-BL-017-01)
@@ -61,13 +65,14 @@ Deterministic canonical hashing, `IdempotencyStore` atomic-claim contract, `crea
 ### modules/identity-tenant
 - P0-003 / US-BL-002-01: pure tenant aggregate (`domain/tenant.ts`) and idempotent commands (`application/tenant-commands.ts`): provision, activate, suspend, reactivate, close. Trusted platform context and target tenant establish the transaction/RLS scope; authorization runs before replay lookup. One unit of work contains the idempotency record, tenant/default-role/administrator changes, audit, outbox and stored response. Reasons are required for suspend/close. PostgreSQL tests prove commit, rollback, replay, payload conflict, tenant A/B isolation, concurrent provisioning and lifecycle CAS concurrency.
 - P0-004 / US-BL-002-02 and US-BL-002-04 (written by you earlier): provider-neutral authentication (`application/authentication*.ts`): OIDC/SAML and workload policy; enforces mechanism, issuer, audience, lifetime, MFA, revocation, tenant binding, workload scopes, and workload/interactive separation. Uses a verifier test double; **no production cryptographic adapter, session store or key discovery exists.**
+- `infrastructure/postgres/grant-store.ts`: `PostgresPermissionGrantStore` for `createTenantAuthorizer`; each lookup is a read-only, tenant-bound transaction, so revocation applies on the next evaluation.
 - P0-005 / US-BL-002-03: `domain/authorization.ts` (frozen permission catalog from `13-api-specification.md` section 4 plus tenant, approval and dead-letter permissions; deny-by-default `effectivePermissions`; fail-closed ABAC `constraintsSatisfied` that only narrows), `application/authorization.ts` (`createTenantAuthorizer` with live role lookup so revocation applies on the next command; workload principals need the permission as an explicit scope; `createRoleAdministration` requires `tenant:role:assign` and blocks changing your own roles, which is my addition beyond the spec). Default administrator role holds only `tenant:role:manage` and `tenant:role:assign`.
 
 ### modules/audit-governance
 Owns `approval_request` (Audit & Governance, per the canonical sources); `approval_policy` stays with identity-tenant and is read through a port. `domain/approval.ts`: PENDING, APPROVED, REJECTED, EXPIRED, CANCELLED; separation of duties per policy; distinct approvers; exact action/resource/version matching; version compare-and-set; cancel (maker only); expire (time-driven). `application/approval-commands.ts`: propose, decide, cancel. Deciding needs `approval:request:decide`, an interactive principal and MFA. Decision, audit event and outbox event commit in one unit of work.
 
 ### modules/foundation-proof (P0-010)
-Test-only active-tenant proof command guarded by the non-default `foundation:proof:execute` permission. Migration 004 owns `foundation_proof_record` with forced RLS. Its PostgreSQL test proves concurrent exact replay yields one proof record/audit/outbox/idempotency result, correlation is consistent through the record/audit/envelope, changed payloads conflict, and tenant B cannot read or replay tenant A's stored response. The integration currently uses an allow test authorizer; real PostgreSQL RBAC composition, dispatcher retry, ingress-to-dispatch tracing and CI evidence remain.
+Test-only active-tenant proof command guarded by the non-default `foundation:proof:execute` permission. Migration 004 owns `foundation_proof_record` with forced RLS. Its PostgreSQL test proves concurrent exact replay yields one proof record/audit/outbox/idempotency result, correlation is consistent through the record/audit/envelope, changed payloads conflict, and tenant B cannot read or replay tenant A's stored response. `tests/integration/phase0-release-gate.test.ts` composes real tenant commands, PostgreSQL RBAC (deny, grant, revoke), the proof, dispatch with a broker refusal and a retry, and a deduplicated redelivery. HTTP ingress, the ingress-to-dispatch trace, platform-role authorization and CI evidence remain.
 
 ## 4. Durable status (in `docs/implementation/implementation-roadmap-data.js`)
 
@@ -76,20 +81,20 @@ Test-only active-tenant proof command guarded by the non-default `foundation:pro
 | US-BL-001-05 (P0-002) | SUB-E001 | 80 | 2 `passing` | HTTP ingress adapter, ingress correlation propagation, metrics, UI copy |
 | US-BL-001-01 (P0-001) | SUB-E001 | 90 | TC-001-01-03 `partial` | PostgreSQL/RLS binding is proven; worker/job context and real cache adapter remain |
 | US-BL-001-02 (P0-006) | SUB-E001 | 85 | 3 `passing` | HTTP wiring/headers, failed-final storage, retention source, cleanup job and metrics |
-| US-BL-001-03 (P0-007) | SUB-E001 | 55 | 1 `passing`, 1 `partial` | atomic insert proven; PostgreSQL leasing/inbox, broker, schema validation, runtime, gap detection, metrics and retention remain |
-| US-BL-001-04 (P0-009) | SUB-E001 | 32 | 2 `partial` | nine foundation tables use forced RLS; extend to all tenant tables and automate the complete A/B CRUD matrix |
+| US-BL-001-03 (P0-007) | SUB-E001 | 75 | 1 `passing`, 1 `partial` | PostgreSQL leasing, dead-letter and inbox proven; broker, runtime loop/lease renewal, schema validation, gap detection, metrics and retention remain |
+| US-BL-001-04 (P0-009) | SUB-E001 | 32 | 2 `partial` | ten foundation tables use forced RLS; extend to all tenant tables and automate the complete A/B CRUD matrix |
 | US-BL-002-01 (P0-003) | SUB-E002 | 90 | 3 `passing` | reviewed platform RBAC and HTTP ingress |
 | US-BL-002-02 (P0-004) | SUB-E002 | 70 | 2 `partial` | real OIDC/SAML signature and key discovery, durable sessions, security audit facts |
 | US-BL-002-04 (P0-004) | SUB-E002 | 70 | 1 `partial`, 1 `passing` | signed-token or mTLS adapter, issuance and rotation |
-| US-BL-002-03 (P0-005) | SUB-E002 | 50 | 2 `partial` | PostgreSQL adapters and RLS, ingress permission declaration, ApprovalPolicy management, expiry sweeper, platform-role scoping, replace `PlatformAuthorizer` port, metrics |
-| US-BL-017-01 (P0-008) | SUB-E017 | 55 | 2 `partial` | audit table/INSERT-only grant and lifecycle atomicity proven; explicit privilege test, reader adapter, retention, ingress, wider adoption and operational gates remain |
+| US-BL-002-03 (P0-005) | SUB-E002 | 55 | 2 `partial` | grant lookup adapter done; role-administration and approval PostgreSQL adapters, ingress permission declaration, ApprovalPolicy management, expiry sweeper, platform-role scoping, replace `PlatformAuthorizer` port, metrics |
+| US-BL-017-01 (P0-008) | SUB-E017 | 62 | 1 `passing`, 1 `partial` | privilege denial proven; approval/role adapters for atomicity, reader adapter, retention, ingress, wider adoption and operational gates remain |
 
 Do not mark all of US-MSR-080-01 implemented: it also covers authorization, encryption, key management, secrets and rate limiting outside this work. The authentication slice traces to `MSR-080-3B6F4B3FE4` (OIDC/OAuth2), `MSR-080-A555453F8D` (SAML) and `MSR-080-477F636C27` (MFA).
 
 ## 5. Known gaps and design choices to review
 
 Gaps found in review (fix or raise them):
-1. P0-010 now has the dedicated active-tenant proof record/event and PostgreSQL isolation/atomicity evidence. Real RBAC composition, dispatcher retry, end-to-end ingress-to-dispatch trace and CI evidence capture remain.
+1. P0-010 has the proof record/event, PostgreSQL isolation/atomicity evidence and a composed release-gate test (RBAC, retry, dedup). The HTTP ingress, the end-to-end ingress-to-dispatch trace and CI evidence capture remain.
 2. The `PlatformAuthorizer` for provisioning and lifecycle is only a deny-by-default port; platform roles are not modeled.
 3. Only three modules' commands audit through the shared recorder plus dead-letter resolution; every future material command must too.
 4. Audit-write-failure paging, the metrics named in the backlog, and the log/trace secret-scan release gate are not built.
@@ -101,14 +106,14 @@ Design choices I made that the Product Owner has not confirmed: dead-letter bloc
 Do these in order, one bounded tranche at a time, and stop to report after each.
 
 **A. Decision-independent work**
-1. Continue P0-010 with PostgreSQL RBAC composition, dispatcher retry, end-to-end ingress-to-dispatch trace and CI evidence capture; do not call the release gate complete before those remaining acceptance criteria pass.
+1. Continue P0-010: the HTTP ingress-to-dispatch correlation is proven; CI evidence capture (provider being explored by the Product Owner), trace spans/metrics export and platform-operator identity remain.
 2. Consumer-side `aggregate_version` gap detection helper for use after a dead-letter skip.
-3. Propose (do not silently add) a type-check step, and propose a permission or role matrix review for the 12 personas.
-4. An HTTP ingress adapter design note for `apps/api` (correlation and causation IDs, `Idempotency-Key`, `Retry-After`, problem+json). Build it only if the Product Owner approves the framework choice; the repo has no web framework yet.
+3. Role-administration and approval PostgreSQL adapters, then the audit reader adapter and its `audit:read` route.
+4. Extend the Fastify ingress as new commands land: declare each route's permission, keep strict schemas, and add an HTTP contract test per route.
 
 **B. PostgreSQL tranche (Docker Compose decision resolved)**
 1. **Complete for tenant lifecycle:** migration and adapter for identity-tenant, transaction-local tenant binding, forced RLS, repository filters, commit/rollback and CAS concurrency evidence. TC-002-01-03 is `passing`; TC-001-01-03 is conservatively `partial` until the real cache and worker/job paths are integrated.
-2. Idempotency adapter/unique-index race proof is complete. Next add outbox SKIP LOCKED leasing, explicit audit UPDATE/DELETE denial tests, then approval persistence.
+2. Idempotency, outbox SKIP LOCKED leasing, inbox, dead-letter resolution and audit privilege-denial proofs are complete. Next add role-administration and approval persistence, then the audit reader adapter.
 3. Extend **P0-009** (`BL-001-04`, `BL-017-03`) across every tenant-owned table and add the full tenant A/B CRUD matrix. Current proof covers the nine foundation tables, but the roadmap story is broader.
 4. **P0-010 is in progress:** concurrent active-tenant execution proves one proof record, audit, outbox and stored response; cross-tenant observation/replay is covered. Real RBAC composition, dispatcher retry, ingress-to-dispatch trace and CI release evidence remain.
 

@@ -10,6 +10,7 @@ Implementation is governed by [`docs/HANDOVER_PROMPT_IMPLEMENTATION.md`](../HAND
 | SPIKE-01 Backend runtime | Complete; Product Owner selected TypeScript on Node.js 24 LTS | [Runtime selection proposal](spikes/SPIKE-01/runtime-selection-proposal.md) |
 | Phase 0 backlog decomposition | Complete | [Implementation-ready stories](phase-0-backlog.md) |
 | Phase 0 repository/application scaffolding | In progress; first tenant-context and tenant-lifecycle slice implemented | [Repository README](../../README.md) |
+| Open decisions | Options and recommendations awaiting Product Owner confirmation | [Decision proposals](decision-proposals.md) |
 
 ## Live implementation tracking
 

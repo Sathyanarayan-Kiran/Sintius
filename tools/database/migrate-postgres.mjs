@@ -5,7 +5,8 @@ import pg from "pg";
 
 const { Pool } = pg;
 const databaseUrl = process.env.SINTIUS_MIGRATION_DATABASE_URL ?? "postgresql://sintius_admin@127.0.0.1:54329/sintius";
-const modulesDirectory = resolve(import.meta.dirname, "../../modules");
+// Module-owned tables live under modules/*; shared platform tables (outbox relay, inbox) under platform/*.
+const migrationRoots = ["../../modules", "../../platform"].map((path) => resolve(import.meta.dirname, path));
 const pool = new Pool({ connectionString: databaseUrl, max: 1 });
 
 try {
@@ -20,13 +21,17 @@ try {
       )
     `);
     const migrations = [];
-    for (const moduleName of await readdir(modulesDirectory)) {
-      const migrationsDirectory = resolve(modulesDirectory, moduleName, "infrastructure/postgres/migrations");
+    const packageDirectories = [];
+    for (const rootDirectory of migrationRoots) {
+      for (const packageName of await readdir(rootDirectory)) packageDirectories.push(resolve(rootDirectory, packageName));
+    }
+    for (const packageDirectory of packageDirectories) {
+      const migrationsDirectory = resolve(packageDirectory, "infrastructure/postgres/migrations");
       let names;
       try {
         names = await readdir(migrationsDirectory);
       } catch (error) {
-        if (error.code === "ENOENT") continue;
+        if (error.code === "ENOENT" || error.code === "ENOTDIR") continue;
         throw error;
       }
       for (const migrationName of names.filter((name) => name.endsWith(".sql"))) {

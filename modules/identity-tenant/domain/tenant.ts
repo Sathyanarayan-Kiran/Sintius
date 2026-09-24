@@ -30,10 +30,10 @@ export interface TenantChange {
 }
 
 const transitions: Readonly<Record<TenantState, readonly TenantState[]>> = Object.freeze({
-  PROVISIONING: Object.freeze(["ACTIVE"]),
-  ACTIVE: Object.freeze(["SUSPENDED", "CLOSED"]),
-  SUSPENDED: Object.freeze(["ACTIVE", "CLOSED"]),
-  CLOSED: Object.freeze([]),
+  PROVISIONING: Object.freeze(["ACTIVE"] as const),
+  ACTIVE: Object.freeze(["SUSPENDED", "CLOSED"] as const),
+  SUSPENDED: Object.freeze(["ACTIVE", "CLOSED"] as const),
+  CLOSED: Object.freeze([] as const),
 });
 
 const transitionEvents: Readonly<Record<Exclude<TenantState, "PROVISIONING">, TenantEventType>> = Object.freeze({

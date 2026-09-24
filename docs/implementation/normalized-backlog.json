@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-23T12:21:32.403Z",
+  "generatedAt": "2026-09-24T13:03:50.241Z",
   "source": {
     "file": "AI_Native_Subscription_Revenue_Platform_Master_Product_Specification.md",
     "sha256": "0a8a831501a99fa5e75c567cd3d0f059c5752b33fface2683cb23bd6292f4a44",
@@ -30,8 +30,8 @@
             "BL-001-01"
           ],
           "implementation": "in_progress",
-          "progress": 90,
-          "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping are implemented. A real PostgreSQL transaction adapter now sets a transaction-local tenant, applies mandatory repository filters and is protected by forced RLS; PostgreSQL integration tests prove missing-context fail-closed behavior and tenant A/B read/write isolation. TC-001-01-03 remains partial because worker/job propagation and a real cache adapter are not yet integrated.",
+          "progress": 92,
+          "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping are implemented. The PostgreSQL transaction adapter sets a transaction-local tenant, applies mandatory repository filters and is protected by forced RLS. The Fastify ingress derives the tenant only from the authenticated principal (single membership, or X-Active-Tenant choosing among signed memberships), rejects a tenant_id in tenant-scoped bodies before any lookup, checks membership before reading tenant state, and runs the handler inside the resolved context; outbox consumers bind the delivered event's tenant. TC-001-01-03 remains partial because worker/job context establishment and a real cache adapter are not yet integrated.",
           "acceptance": [
             "Given verified membership in tenant A, when a request enters the application, tenant A is propagated through asynchronous work without accepting a body override.",
             "Given a principal without membership, access is denied before a domain transaction begins.",
@@ -104,8 +104,8 @@
             "BL-001-02"
           ],
           "implementation": "in_progress",
-          "progress": 85,
-          "notes": "Transaction-aware executor, deterministic SHA-256 canonical hashing, authorization before lookup, payload-conflict 409, mandatory validated key, seven-day default retention and purge port are implemented. The PostgreSQL adapter uses the tenant/scope/key primary key as its serialization point and shares the protected command transaction. All tenant provisioning/lifecycle entry points and the active-tenant foundation proof command require command metadata carrying the idempotency key. Unit and PostgreSQL tests prove exact replay, current authorization before replay, rollback, payload conflict, a 12-request adapter race, tenant isolation, concurrent provisioning and a concurrent active-tenant proof with exactly one mutation/audit/outbox/result commit. Remaining: HTTP ingress and response headers, deterministic failed-final responses, per-tenant retention source and cleanup job, and replay/conflict/pending-age metrics.",
+          "progress": 90,
+          "notes": "Transaction-aware executor, deterministic SHA-256 canonical hashing, authorization before lookup, payload-conflict 409, mandatory validated key, seven-day default retention and purge port are implemented. The PostgreSQL adapter uses the tenant/scope/key primary key as its serialization point and shares the protected command transaction. The Fastify ingress takes the key from the Idempotency-Key header and returns Retry-After with 409 request_in_progress; an HTTP test over PostgreSQL proves exact replay of the stored 201 response, 409 on a changed payload and 400 when the key is missing. Unit and PostgreSQL tests also prove current authorization before replay, rollback, a 12-request adapter race, tenant isolation and concurrent provisioning/proof with exactly one commit. Keys are RFC 9562 UUIDs compared case-insensitively (decision D2). Remaining: deterministic failed-final responses, per-tenant retention source and cleanup job, and replay/conflict/pending-age metrics.",
           "acceptance": [
             "An identical retry with the same tenant, command, key and payload returns the original response without another effect.",
             "Reusing the key with a different canonical payload returns a 409 conflict.",
@@ -205,8 +205,8 @@
             "BL-001-03"
           ],
           "implementation": "in_progress",
-          "progress": 55,
-          "notes": "Outbox writer/store/publisher/inbox ports with adapter contracts, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer wrapper are implemented and unit-tested. The RLS-protected PostgreSQL outbox_event table has INSERT-only application permission; real provisioning and active-tenant foundation-proof tests prove mutation, audit, idempotency result and outbox commit once or roll back together, so mutation/outbox atomicity is passing. Crash/replay remains partial because there is no PostgreSQL leasing/inbox adapter or real broker proof. Dead-lettered events block only their aggregate stream until authorized requeue or skip. Remaining: aggregate_version gap detection, PostgreSQL inbox and SKIP LOCKED leasing adapters, broker, schema validation, dispatcher runtime/lease renewal, dispatcher RLS identity, metrics and retention.",
+          "progress": 75,
+          "notes": "Outbox writer/store/publisher/inbox ports, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer are implemented. Mutation/outbox atomicity is passing on PostgreSQL through tenant provisioning and the active-tenant proof. A PostgreSQL dispatcher store (migration 005, dedicated NOBYPASSRLS sintius_dispatcher role with SELECT and column-limited UPDATE only) leases stream heads with FOR UPDATE SKIP LOCKED; integration tests prove head-of-stream order, backoff blocking only its own stream, six concurrent workers publishing 96 events exactly once in per-stream order with no stream ever having two events in flight, expired-lease re-grant with stale-worker outcomes rejected, and an audited operator skip/requeue that unblocks a dead-lettered stream and rolls back with a failed audit write. A forced-RLS inbox_record table and PostgreSQL inbox persistence prove per-consumer/per-tenant deduplication, rollback with a failing handler and one effect under eight concurrent redeliveries; the P0-010 release-gate test dispatches with a broker refusal and retry and deduplicates a full redelivery. Crash/replay stays partial because there is no real broker or process-kill chaos run. Remaining: broker selection and adapter, dispatcher runtime loop/lease renewal, envelope schema validation before publish, aggregate_version gap detection, metrics export and outbox/inbox retention.",
           "acceptance": [
             "A domain mutation and its outbox record commit or roll back in one transaction.",
             "After a dispatcher failure, the event is retried and consumers deduplicate it by event ID."
@@ -258,7 +258,7 @@
           ],
           "implementation": "in_progress",
           "progress": 32,
-          "notes": "All nine current PostgreSQL foundation tables have tenant_id, enabled and forced RLS, policies bound to transaction-local app.tenant_id and a NOBYPASSRLS application role. Identity-tenant, idempotency and foundation-proof queries also include explicit tenant binding. Integration evidence proves no-context reads return no tenant rows, a cross-tenant insert is rejected, the same idempotency key is isolated across two tenants, and tenant B cannot observe or replay tenant A's proof result. Both tests remain partial until every future tenant-owned table/repository is migrated and the complete A/B select/insert/update/delete matrix is automated.",
+          "notes": "All ten current PostgreSQL foundation tables (including inbox_record) have tenant_id, enabled and forced RLS, policies bound to transaction-local app.tenant_id and a NOBYPASSRLS application role. Identity-tenant, idempotency and foundation-proof queries also include explicit tenant binding. Integration evidence proves no-context reads return no tenant rows, a cross-tenant insert is rejected, the same idempotency key is isolated across two tenants, and tenant B cannot observe or replay tenant A's proof result. Both tests remain partial until every future tenant-owned table/repository is migrated and the complete A/B select/insert/update/delete matrix is automated.",
           "acceptance": [
             "Every tenant-owned table has forced RLS and every repository requires trusted tenant context.",
             "Tenant A cannot read, insert, update or delete tenant B data even if an application filter is bypassed.",
@@ -360,8 +360,8 @@
             "BL-001-05"
           ],
           "implementation": "in_progress",
-          "progress": 80,
-          "notes": "Cataloged problem registry enforced at construction, validated trace IDs, transport-neutral boundary mapper (known problems allow-listed; unexpected errors become a sanitized 500 with redacted internal evidence) and golden/security tests implemented. Remaining: concrete HTTP ingress adapter once a framework is selected, propagation of ingress correlation/causation into tenant context and event envelopes, error metrics/log dimensions, and UI code-to-copy mapping.",
+          "progress": 88,
+          "notes": "Cataloged problem registry enforced at construction, validated trace IDs, transport-neutral boundary mapper (known problems allow-listed; unexpected errors become a sanitized 500 with redacted internal evidence) and golden/security tests implemented. The Fastify ingress (apps/api) generates or validates X-Correlation-Id, uses it as the request and log ID, echoes it on every response, carries X-Correlation-Id/X-Causation-Id into the tenant or platform context and from there into audit rows and event envelopes, and renders every failure (schema, JSON, media type, size, 404, unexpected) as application/problem+json with Retry-After for in-flight duplicates. HTTP and PostgreSQL tests prove one ingress correlation ID reaches the record, audit row and published envelope. Remaining: error metrics/log dimensions and UI code-to-copy mapping.",
           "acceptance": [
             "Every expected failure returns RFC-7807-compatible data with a stable code and correlation ID.",
             "Unexpected errors return a sanitized 500 response while preserving internal trace evidence."
@@ -10136,8 +10136,8 @@
             "BL-002-01"
           ],
           "implementation": "in_progress",
-          "progress": 90,
-          "notes": "Aggregate and application handlers (provision, activate, suspend, reactivate, close) use the real PostgreSQL adapter and now execute through trusted platform-scoped idempotency. Tests prove atomic tenant/default-role/administrator/audit/outbox/result commit, replay without repeated effects, authorization before replay lookup, full rollback after injected failure, and database compare-and-set under a concurrent lifecycle race. Remaining: replace the platform-authorizer port with reviewed platform RBAC and add HTTP ingress.",
+          "progress": 93,
+          "notes": "Aggregate and application handlers (provision, activate, suspend, reactivate, close) use the real PostgreSQL adapter and execute through trusted platform-scoped idempotency. Fastify routes (POST /v1/platform/tenants and /{id}/activate|suspend|reactivate|close) require If-Match, return ETag/Location and map a stale version to 412; an HTTP test provisions and activates tenants on PostgreSQL. Tests prove atomic tenant/default-role/administrator/audit/outbox/result commit, replay without repeated effects, authorization before replay lookup, full rollback and database compare-and-set under a concurrent lifecycle race. Remaining: a platform-operator identity model and reviewed platform RBAC to replace the platform-authorizer port.",
           "acceptance": [
             "Provisioning creates the tenant in PROVISIONING and valid commands move it only through the approved state graph.",
             "A stale version or forbidden transition is rejected; CLOSED is terminal.",
@@ -10261,8 +10261,8 @@
             "BL-002-03"
           ],
           "implementation": "in_progress",
-          "progress": 50,
-          "notes": "Implemented and unit-tested against in-memory doubles: platform permission catalog from the API spec, deny-by-default tenant-scoped evaluator with live role lookup (revocation applies on the next command; workload principals need explicit scopes), fail-closed ABAC narrowing, role assignment commands (no self-change), and an Audit & Governance approval aggregate (PENDING/APPROVED/REJECTED/EXPIRED/CANCELLED, separation of duties, distinct approvers, exact action/resource/version matching, version CAS) with handlers requiring an interactive MFA principal and committing decision, audit and outbox event in one unit of work. The foundation migration creates RLS-protected tenant_role, tenant_role_assignment and approval_policy tables, but role administration and approvals still have no PostgreSQL repository adapters. Both tests stay partial: the matrix covers a fixture rather than a reviewed matrix for all 12 personas, and approval_request persistence is absent. Remaining: repository adapters and integration tests, ingress permission declaration, approval expiry sweeper, ApprovalPolicy management, platform-role scoping and replacing the platform authorizer port, denial/approval-latency metrics, UI.",
+          "progress": 55,
+          "notes": "Implemented and unit-tested against in-memory doubles: platform permission catalog from the API spec, deny-by-default tenant-scoped evaluator with live role lookup (revocation applies on the next command; workload principals need explicit scopes), fail-closed ABAC narrowing, role assignment commands (no self-change), and an Audit & Governance approval aggregate (PENDING/APPROVED/REJECTED/EXPIRED/CANCELLED, separation of duties, distinct approvers, exact action/resource/version matching, version CAS) with handlers requiring an interactive MFA principal and committing decision, audit and outbox event in one unit of work. The foundation migration creates RLS-protected tenant_role, tenant_role_assignment and approval_policy tables, and a PostgreSQL PermissionGrantStore now backs createTenantAuthorizer: the P0-010 release-gate test proves deny-by-default for a non-member of the role, the tenant administrator and the same actor in another tenant, a grant through tenant_role/tenant_role_assignment, and revocation on the next command. Role administration and approvals still have no PostgreSQL repository adapters. Both tests stay partial: the matrix covers a fixture rather than a reviewed matrix for all 12 personas, and approval_request persistence is absent. Remaining: repository adapters and integration tests, ingress permission declaration, approval expiry sweeper, ApprovalPolicy management, platform-role scoping and replacing the platform authorizer port, denial/approval-latency metrics, UI.",
           "acceptance": [
             "Permissions are tenant-scoped and deny by default.",
             "A proposer cannot approve their own governed request; an authorized second actor can approve it atomically.",
@@ -13259,9 +13259,9 @@
           "backlog": [
             "BL-005-02"
           ],
-          "implementation": "blocked",
-          "progress": 0,
-          "notes": "Awaiting SPIKE-02.",
+          "implementation": "in_progress",
+          "progress": 10,
+          "notes": "Unblocked by D5 (2026-09-24). platform/money supplies exact BigInt fixed-point Decimal and minor-unit Money; neither converts to a JavaScript number. The architecture lint rejects parseFloat/toFixed/toPrecision/Math rounding in production source and money-named fields typed number anywhere (line opt-out only with a stated reason), so the no-float path is enforced. Remaining: the charge-type rating engine and its golden dataset.",
           "acceptance": [
             "Flat, per-seat, one-time, volume, graduated-tier and allowance/overage models match the approved golden examples.",
             "No monetary calculation uses binary floating point."
@@ -13271,13 +13271,13 @@
               "id": "TC-005-02-01",
               "name": "MVP charge-type golden dataset",
               "type": "golden",
-              "status": "blocked"
+              "status": "not_run"
             },
             {
               "id": "TC-005-02-02",
               "name": "No binary-float money path",
               "type": "architecture",
-              "status": "blocked"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E005",
@@ -13311,9 +13311,9 @@
           "backlog": [
             "BL-005-03"
           ],
-          "implementation": "blocked",
-          "progress": 0,
-          "notes": "Awaiting SPIKE-06 finance sign-off.",
+          "implementation": "in_progress",
+          "progress": 25,
+          "notes": "D6 accepted 2026-09-24: HALF_UP and ACTUAL_DAYS. prorateActualDays computes amount x used days / period days exactly on half-open civil-date intervals and rounds once; golden cases cover 28-, 29-, 30- and 31-day months, a leap day, JPY and invalid dates. Remaining: NONE, FULL_PERIOD_ONLY and IMMEDIATE_FULL policies, policy versioning and calculation traces, tenant time-zone/DST boundary rules and their property tests.",
           "acceptance": [
             "NONE, ACTUAL_DAYS, FULL_PERIOD_ONLY and IMMEDIATE_FULL produce policy-versioned traces.",
             "Calendar and DST boundaries follow the finance-approved convention."
@@ -13323,13 +13323,13 @@
               "id": "TC-005-03-01",
               "name": "Proration boundary golden cases",
               "type": "golden",
-              "status": "blocked"
+              "status": "partial"
             },
             {
               "id": "TC-005-03-02",
               "name": "DST and calendar-day property cases",
               "type": "property",
-              "status": "blocked"
+              "status": "not_run"
             }
           ],
           "epicId": "SUB-E005",
@@ -13363,9 +13363,9 @@
           "backlog": [
             "BL-005-04"
           ],
-          "implementation": "blocked",
-          "progress": 0,
-          "notes": "Awaiting SPIKE-02 and SPIKE-06.",
+          "implementation": "in_progress",
+          "progress": 20,
+          "notes": "Unblocked by D5/D6. platform/money implements HALF_UP/HALF_EVEN/DOWN/UP rounding and deterministic largest-remainder allocation with key-ordered tie-break; 1,000 seeded property cases prove parts sum exactly, stay within one minor unit of the exact share and do not depend on input order. The invariant stays partial until pricing components allocate through it. Remaining: discount, minimum and cap operations in documented order with rounding only at approved boundaries.",
           "acceptance": [
             "Operations apply in the documented order and currency rounding occurs only at approved boundaries.",
             "Allocated rounded amounts reconcile exactly to the rounded total."
@@ -13375,13 +13375,13 @@
               "id": "TC-005-04-01",
               "name": "Discount/minimum/cap ordering golden cases",
               "type": "golden",
-              "status": "blocked"
+              "status": "not_run"
             },
             {
               "id": "TC-005-04-02",
               "name": "Remainder allocation invariant",
               "type": "property",
-              "status": "blocked"
+              "status": "partial"
             }
           ],
           "epicId": "SUB-E005",
@@ -13701,9 +13701,9 @@
           "backlog": [
             "BL-005-09"
           ],
-          "implementation": "blocked",
+          "implementation": "not_started",
           "progress": 0,
-          "notes": "Runs after SPIKE-02 and SPIKE-06 decisions.",
+          "notes": "Unblocked: SPIKE-02 selected BigInt fixed-point with decimal.js as a dev-only oracle (D5), SPIKE-06 selected HALF_UP and ACTUAL_DAYS (D6). The money-level golden suite (0-, 2- and 3-decimal currencies, overflow, excess scale, division by zero) and 3,000-case oracle property suites pass; the pricing-level dataset follows the rating engine.",
           "acceptance": [
             "The approved multi-currency golden dataset passes with zero precision loss.",
             "Property tests cover monotonicity, tier partitioning, caps, allocation and deterministic replay."
@@ -13713,13 +13713,13 @@
               "id": "TC-005-09-01",
               "name": "Full approved golden dataset",
               "type": "golden",
-              "status": "blocked"
+              "status": "not_run"
             },
             {
               "id": "TC-005-09-02",
               "name": "Pricing property-test suite",
               "type": "property",
-              "status": "blocked"
+              "status": "not_run"
             }
           ],
           "epicId": "SUB-E005",
@@ -35134,8 +35134,8 @@
             "BL-017-01"
           ],
           "implementation": "in_progress",
-          "progress": 55,
-          "notes": "Shared platform/audit package implements immutable deep-frozen events stamped only from trusted context, deny-by-default allow-list snapshots with redaction, SHA-256 evidence hashes, failure propagation/alerting and a permissioned tenant-scoped reader whose reads are audited. Tenant lifecycle, role administration, approval and dead-letter commands use it. The first PostgreSQL migration adds an RLS-protected audit_event table and grants the application role INSERT only; tenant lifecycle integration tests prove audit and mutation commit or roll back together. Both roadmap tests remain partial because UPDATE/DELETE denial is not yet an explicit database integration test, other material-command adapters remain in-memory, and the audit reader has no PostgreSQL adapter. Remaining: immutable-privilege test, audit reader adapter and paging integration, hash-chain/anchoring decision, retention policy, audit:read ingress wiring, command metadata capture, wider module adoption, paging on write failure and log/trace secret-scan gate.",
+          "progress": 62,
+          "notes": "Shared platform/audit package implements immutable deep-frozen events stamped only from trusted context, deny-by-default allow-list snapshots with redaction, SHA-256 evidence hashes, failure propagation/alerting and a permissioned tenant-scoped reader whose reads are audited. Tenant lifecycle, role administration, approval and dead-letter commands use it. The RLS-protected audit_event table grants the application role INSERT only; a PostgreSQL integration test now proves the application role cannot UPDATE, DELETE or TRUNCATE audit rows and that the dispatcher role cannot update, delete or read them and can insert only for the tenant its transaction is bound to, so immutability and redaction is passing. Mutation/audit atomicity stays partial because approval and role-administration adapters remain in-memory and the audit reader has no PostgreSQL adapter. Remaining: audit reader adapter and paging integration, hash-chain/anchoring decision, retention policy, audit:read ingress wiring, command metadata capture, wider module adoption, paging on write failure and log/trace secret-scan gate.",
           "acceptance": [
             "Every material mutation records actor, action, reason, correlation and safe before/after evidence in the same transaction.",
             "Application roles cannot update or delete audit rows.",
@@ -35170,7 +35170,7 @@
               "id": "TC-017-01-02",
               "name": "Audit immutability and redaction",
               "type": "security",
-              "status": "partial"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E017",

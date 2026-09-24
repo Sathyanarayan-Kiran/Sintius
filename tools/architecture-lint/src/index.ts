@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 
 interface ModuleManifest {
   readonly name: string;
@@ -34,9 +34,42 @@ for (const entry of readdirSync(modulesDirectory, { withFileTypes: true })) {
   }
 }
 
+// Transport frameworks belong to apps/*; domain modules and platform packages stay framework-free.
+const FRAMEWORK_IMPORT = /(?:from\s+|import\s*\(\s*)["'](?:fastify|@fastify\/[^"']+)["']/;
+function sourceFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) return entry.name === "node_modules" ? [] : sourceFiles(path);
+    return entry.name.endsWith(".ts") ? [path] : [];
+  });
+}
+for (const layer of ["modules", "platform"]) {
+  for (const file of sourceFiles(resolve(root, layer))) {
+    if (FRAMEWORK_IMPORT.test(readFileSync(file, "utf8"))) failures.push(`${relative(root, file)}: HTTP framework imports are only allowed under apps/*`);
+  }
+}
+
+// Commercial arithmetic guardrail (decision D5): money uses platform/money, never binary floating
+// point. A line may opt out only with an explicit `money-lint: allow <reason>` comment.
+const FLOAT_ARITHMETIC = /\bparseFloat\s*\(|\.toFixed\s*\(|\.toPrecision\s*\(|\bMath\.(?:round|floor|ceil|trunc|fround)\s*\(/;
+const MONEY_AS_NUMBER = /\b[A-Za-z_$]*(?:amount|price|total|subtotal|tax|balance|discount|fee|cost|charge|refund|credit|debit|money)[A-Za-z]*\??\s*:\s*(?:readonly\s+)?number\b/i;
+let arithmeticFiles = 0;
+for (const layer of ["apps", "modules", "platform"]) {
+  for (const file of sourceFiles(resolve(root, layer))) {
+    arithmeticFiles += 1;
+    const isTest = /[\\/]tests[\\/]/.test(file);
+    readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+      if (/money-lint:\s*allow\s+\S/.test(line)) return;
+      const where = `${relative(root, file)}:${index + 1}`;
+      if (!isTest && FLOAT_ARITHMETIC.test(line)) failures.push(`${where}: floating-point rounding/parsing is not allowed; use platform/money Decimal`);
+      if (MONEY_AS_NUMBER.test(line)) failures.push(`${where}: monetary values must be Money or Decimal, never number`);
+    });
+  }
+}
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exitCode = 1;
 } else {
-  console.log(`Architecture manifests valid: ${ownership.size} owned tables across ${moduleCount} module(s).`);
+  console.log(`Architecture manifests valid: ${ownership.size} owned tables across ${moduleCount} module(s); no framework imports outside apps/*; ${arithmeticFiles} files pass the money guardrail.`);
 }

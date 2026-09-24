@@ -120,7 +120,14 @@ export interface InboxStore {
   }): Promise<"recorded" | "duplicate">;
 }
 
+/** Taken from the delivered envelope; adapters bind the transaction (and RLS) to this tenant. */
+export interface InboxTransactionScope {
+  readonly tenantId: string;
+  readonly correlationId: string;
+  readonly causationId?: string;
+}
+
 export interface InboxPersistence<U extends { readonly inbox: InboxStore }> {
   /** The inbox record and the handler's writes commit together or not at all. */
-  runInTransaction<T>(work: (unitOfWork: U) => Promise<T>): Promise<T>;
+  runInTransaction<T>(scope: InboxTransactionScope, work: (unitOfWork: U) => Promise<T>): Promise<T>;
 }

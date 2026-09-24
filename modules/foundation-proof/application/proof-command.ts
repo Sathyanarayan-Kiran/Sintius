@@ -41,18 +41,12 @@ function normalizedLabel(value: string, correlationId: string): string {
 
 function resultFrom(response: StoredResponse, correlationId: string): Readonly<FoundationProofResult> {
   const body = response.body;
-  if (
-    response.status !== 201 ||
-    typeof body !== "object" ||
-    body === null ||
-    Array.isArray(body) ||
-    typeof body.proof_record_id !== "string" ||
-    typeof body.label !== "string" ||
-    typeof body.recorded_at !== "string"
-  ) {
-    throw problem({ code: "invalid_trusted_context", detail: "Stored foundation proof response is invalid.", correlation_id: correlationId });
-  }
-  return Object.freeze({ proofRecordId: body.proof_record_id, label: body.label, recordedAt: body.recorded_at });
+  const invalid = () =>
+    problem({ code: "invalid_trusted_context", detail: "Stored foundation proof response is invalid.", correlation_id: correlationId });
+  if (response.status !== 201 || typeof body !== "object" || body === null || Array.isArray(body)) throw invalid();
+  const { proof_record_id: proofRecordId, label, recorded_at: recordedAt } = body as Readonly<Record<string, unknown>>;
+  if (typeof proofRecordId !== "string" || typeof label !== "string" || typeof recordedAt !== "string") throw invalid();
+  return Object.freeze({ proofRecordId, label, recordedAt });
 }
 
 /** Test-only Phase 0 command proving the active-tenant foundation controls in one transaction. */

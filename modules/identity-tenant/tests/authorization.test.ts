@@ -29,7 +29,7 @@ const denied = (code: string) => (error: unknown) => error instanceof PlatformPr
 function contextFor(tenant: TenantId, actor: string, options: { kind?: "interactive" | "workload"; scopes?: string[] } = {}) {
   const kind = options.kind ?? "interactive";
   return resolveTenantContext({
-    principal: testPrincipal([tenant], { actor, kind, scopes: options.scopes }),
+    principal: testPrincipal([tenant], { actor, kind, ...(options.scopes === undefined ? {} : { scopes: options.scopes }) }),
     selectedTenantId: tenant,
     tenantState: "ACTIVE",
     correlationId: "corr_rbac_1",

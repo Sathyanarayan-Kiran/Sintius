@@ -71,7 +71,8 @@ function unitOfWork(client: SqlClient, boundTenantId: TenantId, isOpen: () => bo
             WHERE tenant_id = $1 AND tenant_id = current_setting('app.tenant_id', true)`,
           [id],
         );
-        return result.rowCount === 1 ? snapshot(result.rows[0]) : undefined;
+        const row = result.rowCount === 1 ? result.rows[0] : undefined;
+        return row === undefined ? undefined : snapshot(row);
       },
       update: async (tenant, expectedVersion) => {
         guard();

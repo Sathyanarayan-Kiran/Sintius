@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlatformProblem } from "../../problem-model/src/index.ts";
+import { PlatformProblem, problem } from "../../problem-model/src/index.ts";
 import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import { resolveTenantContext, runWithTenantContext, tenantId, type TenantId } from "../../tenant-context/src/index.ts";
 import {
@@ -83,6 +83,13 @@ test("TC-001-02-01 an identical retry replays the original response with exactly
   assert.equal(runs(), 1, "the protected command ran once");
   assert.equal(persistence.effects.length, 1);
   assert.equal(persistence.outbox.length, 1, "the command's event is persisted exactly once");
+});
+
+test("TC-001-02-01 an Idempotency-Key is a UUID compared case-insensitively (decision D2)", async () => {
+  const { execute, allow, work, runs } = fixture();
+  const first = await runWithTenantContext(contextFor(A), () => execute(request(undefined, KEY.toUpperCase()), allow, work()));
+  const second = await runWithTenantContext(contextFor(A), () => execute(request(undefined, KEY), allow, work()));
+  assert.deepEqual([first.replayed, second.replayed, runs()], [false, true, 1]);
 });
 
 test("TC-001-02-01 reusing a key with a different payload is a 409 and leaves the original intact", async () => {
@@ -184,7 +191,15 @@ test("the Idempotency-Key is mandatory and validated; nothing runs on invalid in
   await runWithTenantContext(contextFor(A), async () => {
     await assert.rejects(execute({ scope: SCOPE, key: undefined, payload: {} }, allow, work()), code("idempotency_key_required"));
     await assert.rejects(execute(request(undefined, ""), allow, work()), code("idempotency_key_required"));
-    for (const bad of ["short", "has space in it 123456789", `${"a".repeat(129)}`, "bad/slash/in/key/123456"]) {
+    for (const bad of [
+      "short",
+      "tenant-provision-replay-0001",
+      "8f14e45f-ceea-067f-a0e6-1c2d3e4f5a6b", // version 0 is not defined
+      "8f14e45f-ceea-467f-c0e6-1c2d3e4f5a6b", // wrong variant
+      "8f14e45fceea467fa0e61c2d3e4f5a6b", // no hyphens
+      " 8f14e45f-ceea-467f-a0e6-1c2d3e4f5a6b",
+      "{8f14e45f-ceea-467f-a0e6-1c2d3e4f5a6b}",
+    ]) {
       await assert.rejects(execute(request(undefined, bad), allow, work()), code("idempotency_key_invalid"));
     }
     await assert.rejects(execute(request(undefined, KEY, "Bad Scope!"), allow, work()), code("invalid_trusted_context"));
@@ -200,7 +215,7 @@ test("replay does not bypass current authorization", async () => {
   await runWithTenantContext(contextFor(A), () => execute(request(), allow, work()));
   const before = persistence.transactionsStarted;
   const deny = async () => {
-    throw new PlatformProblem({ code: "permission_denied", status: 403, title: "Permission denied", detail: "denied" });
+    throw problem({ code: "permission_denied", detail: "denied" });
   };
   await runWithTenantContext(contextFor(A, "revoked_user"), async () => {
     await assert.rejects(execute(request(), deny, work()), code("permission_denied"));
@@ -213,7 +228,7 @@ test("records expire per retention policy; only expired rows are purged", async 
   let current = NOW;
   const { persistence, execute, allow, work, runs } = fixture({ now: () => current, retentionSeconds: 3600 });
   await runWithTenantContext(contextFor(A), () => execute(request(), allow, work()));
-  await runWithTenantContext(contextFor(A), () => execute(request({ quantity: 6 }, "second-key-0123456789"), allow, work()));
+  await runWithTenantContext(contextFor(A), () => execute(request({ quantity: 6 }, "0b5e1c2a-7d3f-4e8a-9b1c-2d3e4f5a6b7c"), allow, work()));
 
   current = new Date(NOW.valueOf() + 1800 * 1000);
   assert.equal((await runWithTenantContext(contextFor(A), () => execute(request(), allow, work()))).replayed, true);
@@ -246,7 +261,10 @@ test("store anomalies fail closed: in-flight, half-written and cross-tenant reco
   const hash = canonicalRequestHash(SCOPE, { subscription_id: "sub_1", quantity: 5 });
   const base = { scope: SCOPE, key: KEY, requestHash: hash, createdAt: NOW.toISOString(), expiresAt: new Date(NOW.valueOf() + DAY).toISOString() };
 
-  await assert.rejects(run(async () => ({ kind: "in_progress", retryAfterSeconds: 2 })), code("request_in_progress"));
+  await assert.rejects(
+    run(async () => ({ kind: "in_progress", retryAfterSeconds: 2 })),
+    (error: unknown) => code("request_in_progress")(error) && (error as PlatformProblem).retryAfterSeconds === 2,
+  );
   await assert.rejects(run(async () => ({ kind: "existing", record: { ...base, tenantId: A, status: "processing" } })), code("request_in_progress"));
   await assert.rejects(
     run(async () => ({ kind: "existing", record: { ...base, tenantId: B, status: "completed", response: { status: 200, body: {} } } })),

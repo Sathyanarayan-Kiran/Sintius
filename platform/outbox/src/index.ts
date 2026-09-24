@@ -10,6 +10,7 @@ export type {
   EventPublisher,
   InboxPersistence,
   InboxStore,
+  InboxTransactionScope,
   LeaseRequest,
   OutboxEntry,
   OutboxStats,

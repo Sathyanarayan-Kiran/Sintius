@@ -80,6 +80,7 @@ export function mapErrorToProblemResponse(
   clock: () => Date = () => new Date(),
 ): ProblemResponse {
   const known = error instanceof PlatformProblem ? error.problem : undefined;
+  const retryAfterSeconds = error instanceof PlatformProblem ? error.retryAfterSeconds : undefined;
   const correlationId = pickCorrelationId(context, known?.correlation_id);
 
   const details: ProblemDetails =
@@ -112,7 +113,11 @@ export function mapErrorToProblemResponse(
 
   return Object.freeze({
     status: details.status,
-    headers: Object.freeze({ "content-type": PROBLEM_CONTENT_TYPE, [CORRELATION_ID_HEADER]: correlationId }),
+    headers: Object.freeze({
+      "content-type": PROBLEM_CONTENT_TYPE,
+      [CORRELATION_ID_HEADER]: correlationId,
+      ...(retryAfterSeconds === undefined ? {} : { "retry-after": String(retryAfterSeconds) }),
+    }),
     body,
   });
 }

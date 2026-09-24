@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PlatformProblem } from "../../problem-model/src/index.ts";
+import { PlatformProblem, problem } from "../../problem-model/src/index.ts";
 import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import {
   resolvePlatformCommandContext,
@@ -142,7 +142,7 @@ test("audit events are immutable, tamper-evident and append-only", async () => {
   const forged: AuditEvent = { ...event!, after: { state: "ACTIVE", quantity: 500 } };
   assert.equal(verifyAuditEvent(forged), false, "content changes are detected");
   assert.equal(verifyAuditEvent({ ...event!, evidenceHash: "0".repeat(64) }), false);
-  assert.equal(verifyAuditEvent({ ...event!, reason: undefined } as AuditEvent), false);
+  assert.equal(verifyAuditEvent({ ...event!, reason: undefined } as unknown as AuditEvent), false);
 
   await assert.rejects(
     store.runInTransaction({}, (uow) => uow.audit.append(event!)),
@@ -227,7 +227,7 @@ test("audit reads are denied before anything is read or logged when unauthorized
   const denied = createAuditReader({
     persistence: store,
     recorder,
-    authorize: async () => { throw new PlatformProblem({ code: "permission_denied", status: 403, title: "Permission denied", detail: "denied" }); },
+    authorize: async () => { throw problem({ code: "permission_denied", detail: "denied" }); },
   });
   await runWithTenantContext(contextFor(A), async () => {
     await assert.rejects(denied({}), code("permission_denied"));

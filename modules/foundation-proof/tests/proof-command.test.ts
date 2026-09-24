@@ -8,6 +8,7 @@ import { resolveTenantContext, runWithTenantContext, tenantId } from "../../../p
 import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
 import { FOUNDATION_PROOF_AUDIT_FIELDS, createFoundationProofCommand } from "../application/proof-command.ts";
 import type { FoundationProofPersistence, FoundationProofRecord, FoundationProofUnitOfWork } from "../application/ports.ts";
+import { testIdempotencyKey } from "../../../tests/support/idempotency-key.ts";
 
 const NOW = new Date("2026-09-24T10:00:00.000Z");
 
@@ -117,7 +118,7 @@ const rejectsWith = (code: string) => (error: unknown) => error instanceof Platf
 
 test("P0-010 exact retry returns the stored proof and commits one mutation, audit and event", async () => {
   const { command, persistence } = fixture();
-  const metadata = { idempotencyKey: "foundation-proof-replay-key-0001" };
+  const metadata = { idempotencyKey: testIdempotencyKey("foundation-proof-replay-key-0001") };
   await runWithTenantContext(tenantContext(), async () => {
     const first = await command({ label: "phase-0-release-gate" }, metadata);
     const replay = await command({ label: "phase-0-release-gate" }, metadata);
@@ -131,7 +132,7 @@ test("P0-010 exact retry returns the stored proof and commits one mutation, audi
 });
 
 test("P0-010 authorization precedes replay lookup and changed payloads conflict", async () => {
-  const metadata = { idempotencyKey: "foundation-proof-conflict-key-001" };
+  const metadata = { idempotencyKey: testIdempotencyKey("foundation-proof-conflict-key-001") };
   const allowed = fixture();
   await runWithTenantContext(tenantContext(), async () => {
     await allowed.command({ label: "original" }, metadata);
@@ -156,7 +157,7 @@ for (const point of ["record", "audit", "outbox"] as const) {
     const { command, persistence } = fixture();
     persistence.failAt = point;
     await runWithTenantContext(tenantContext(), async () => {
-      await assert.rejects(command({ label: "rollback" }, { idempotencyKey: `foundation-proof-${point}-failure-0001` }));
+      await assert.rejects(command({ label: "rollback" }, { idempotencyKey: testIdempotencyKey(`foundation-proof-${point}-failure-0001`) }));
     });
     assert.equal(persistence.committed.records.length, 0);
     assert.equal(persistence.committed.audit.length, 0);

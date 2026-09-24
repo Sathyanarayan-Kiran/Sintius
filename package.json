@@ -18,16 +18,24 @@
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "db:migrate": "node tools/database/migrate-postgres.mjs",
-    "test:postgres": "node --test modules/identity-tenant/tests/postgres-persistence.test.ts",
+    "test:postgres": "node --test --test-concurrency=1 modules/identity-tenant/tests/postgres-persistence.test.ts platform/outbox/tests/postgres-outbox.test.ts tests/integration/phase0-release-gate.test.ts apps/api/tests/postgres-http.test.ts",
     "check:postgres": "npm run db:up && npm run db:migrate && npm run test:postgres",
     "check:architecture": "node tools/architecture-lint/src/index.ts",
     "check:roadmap": "node tools/validate-roadmap.mjs",
     "requirements:generate": "node tools/requirements/extract-master-requirements.mjs",
     "backlog:generate": "node tools/backlog/normalize-master-backlog.mjs",
     "check:requirements": "node tools/requirements/check-coverage.mjs",
-    "check": "npm run check:architecture && npm run check:roadmap && npm run check:requirements && npm test && npm run check:postgres"
+    "check": "npm run typecheck && npm run check:architecture && npm run check:roadmap && npm run check:requirements && npm test && npm run check:postgres",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "fastify": "5.12.5",
     "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "@types/pg": "8.23.1",
+    "decimal.js": "10.6.0",
+    "typescript": "7.0.2"
   }
 }
