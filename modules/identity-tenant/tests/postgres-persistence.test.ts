@@ -12,6 +12,9 @@ import {
   type TenantId,
 } from "../../../platform/tenant-context/src/index.ts";
 import { testPrincipal } from "../../../tests/support/authenticated-principal.ts";
+import { FOUNDATION_PROOF_AUDIT_FIELDS, createFoundationProofCommand } from "../../foundation-proof/application/proof-command.ts";
+import { FOUNDATION_PROOF_PERMISSION } from "../../foundation-proof/application/ports.ts";
+import { PostgresFoundationProofPersistence } from "../../foundation-proof/infrastructure/postgres/proof-persistence.ts";
 import { TENANT_AUDIT_FIELDS, createTenantCommands } from "../application/tenant-commands.ts";
 import type { TenantUnitOfWork } from "../application/ports.ts";
 import { PostgresTenantPersistence } from "../infrastructure/postgres/tenant-persistence.ts";
@@ -25,6 +28,7 @@ const app = new Pool({ connectionString: appUrl, max: 3 });
 const NOW = new Date("2026-09-24T10:00:00.000Z");
 
 let persistence: PostgresTenantPersistence;
+let proofPersistence: PostgresFoundationProofPersistence;
 let sequence = 0;
 
 function context(actor = "operator_1") {
@@ -80,12 +84,15 @@ before(async () => {
 
 beforeEach(async () => {
   await persistence?.close();
+  await proofPersistence?.close();
   persistence = new PostgresTenantPersistence({ connectionString: appUrl, maxConnections: 12 });
-  await admin.query("TRUNCATE idempotency_record, outbox_event, audit_event, approval_policy, tenant_role_assignment, tenant_role, tenant_identity_provider, tenant RESTART IDENTITY CASCADE");
+  proofPersistence = new PostgresFoundationProofPersistence({ connectionString: appUrl, maxConnections: 12 });
+  await admin.query("TRUNCATE foundation_proof_record, idempotency_record, outbox_event, audit_event, approval_policy, tenant_role_assignment, tenant_role, tenant_identity_provider, tenant RESTART IDENTITY CASCADE");
 });
 
 after(async () => {
   await persistence?.close();
+  await proofPersistence?.close();
   await Promise.all([admin.end(), app.end()]);
 });
 
@@ -151,6 +158,81 @@ test("P0-010 concurrent provisioning retry commits one tenant, audit, outbox and
   );
   assert.equal(await count("audit_event", "tenant_phase0_proof"), 1);
   assert.equal(await count("outbox_event", "tenant_phase0_proof"), 1);
+});
+
+test("P0-010 active-tenant proof is idempotent, atomic, traced and isolated by PostgreSQL RLS", async () => {
+  const [tenantA, tenantB] = await Promise.all([activeTenant("tenant_foundation_A"), activeTenant("tenant_foundation_B")]);
+  let proofSequence = 0;
+  const proofAudit = createAuditRecorder({
+    policy: createAuditPolicy(FOUNDATION_PROOF_AUDIT_FIELDS),
+    clock: () => NOW,
+    newId: () => `aud_foundation_${++proofSequence}`,
+  });
+  const proofCommand = createFoundationProofCommand({
+    persistence: proofPersistence,
+    authorizer: {
+      assertPermission: async (permission) => assert.equal(permission, FOUNDATION_PROOF_PERMISSION),
+    },
+    audit: proofAudit,
+    clock: () => NOW,
+    newProofRecordId: () => `proof_pg_${++proofSequence}`,
+    newEventId: () => `evt_foundation_${++proofSequence}`,
+  });
+  const metadata = { idempotencyKey: "phase0-active-proof-key-000001" };
+  const trustedA = tenantContext(tenantA, "proof_user_A");
+
+  const [first, replay] = await Promise.all([
+    runWithTenantContext(trustedA, () => proofCommand({ label: "phase-0-release-gate" }, metadata)),
+    runWithTenantContext(trustedA, () => proofCommand({ label: "phase-0-release-gate" }, metadata)),
+  ]);
+  assert.deepEqual(replay, first);
+
+  const evidence = await admin.query(
+    `SELECT
+       (SELECT count(*)::int FROM foundation_proof_record WHERE tenant_id = $1) AS proof_count,
+       (SELECT count(*)::int FROM audit_event WHERE tenant_id = $1 AND action = 'foundation.proof_recorded') AS audit_count,
+       (SELECT count(*)::int FROM outbox_event WHERE tenant_id = $1 AND event_type = 'com.subrevos.foundation.proof_recorded.v1') AS outbox_count,
+       (SELECT count(*)::int FROM idempotency_record WHERE tenant_id = $1 AND command_scope = 'foundation.proof.record') AS idempotency_count,
+       (SELECT correlation_id FROM foundation_proof_record WHERE tenant_id = $1) AS record_correlation,
+       (SELECT correlation_id FROM audit_event WHERE tenant_id = $1 AND action = 'foundation.proof_recorded') AS audit_correlation,
+       (SELECT envelope->>'correlation_id' FROM outbox_event WHERE tenant_id = $1 AND event_type = 'com.subrevos.foundation.proof_recorded.v1') AS outbox_correlation`,
+    [tenantA],
+  );
+  assert.deepEqual(evidence.rows[0], {
+    proof_count: 1,
+    audit_count: 1,
+    outbox_count: 1,
+    idempotency_count: 1,
+    record_correlation: trustedA.correlationId,
+    audit_correlation: trustedA.correlationId,
+    outbox_correlation: trustedA.correlationId,
+  });
+
+  const client = await app.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantB]);
+    const invisible = await client.query("SELECT proof_record_id FROM foundation_proof_record WHERE proof_record_id = $1", [first.proofRecordId]);
+    assert.equal(invisible.rowCount, 0, "tenant B must not observe tenant A's proof record");
+    await client.query("ROLLBACK");
+  } finally {
+    client.release();
+  }
+
+  const resultB = await runWithTenantContext(tenantContext(tenantB, "proof_user_B"), () =>
+    proofCommand({ label: "phase-0-release-gate" }, metadata),
+  );
+  assert.notEqual(resultB.proofRecordId, first.proofRecordId, "tenant B must execute independently, not replay tenant A's response");
+  assert.equal(await count("foundation_proof_record", tenantA), 1);
+  assert.equal(await count("foundation_proof_record", tenantB), 1);
+
+  await runWithTenantContext(trustedA, async () => {
+    await assert.rejects(
+      proofCommand({ label: "changed" }, metadata),
+      (error: unknown) => error instanceof PlatformProblem && error.problem.code === "idempotency_key_reused_with_different_payload",
+    );
+  });
+  assert.equal(await count("foundation_proof_record", tenantA), 1);
 });
 
 test("TC-002-01-03 a PostgreSQL failure rolls every earlier provisioning write back", async () => {

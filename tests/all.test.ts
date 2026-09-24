@@ -10,3 +10,4 @@ import "../modules/audit-governance/tests/approval.test.ts";
 import "../platform/idempotency/tests/idempotency.test.ts";
 import "../platform/outbox/tests/outbox.test.ts";
 import "../platform/audit/tests/audit.test.ts";
+import "../modules/foundation-proof/tests/proof-command.test.ts";

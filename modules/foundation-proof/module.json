@@ -1,0 +1,10 @@
+{
+  "name": "foundation-proof",
+  "ownedTables": [
+    "foundation_proof_record"
+  ],
+  "publishedEvents": [
+    "foundation.proof_recorded.v1"
+  ],
+  "allowedModuleDependencies": []
+}

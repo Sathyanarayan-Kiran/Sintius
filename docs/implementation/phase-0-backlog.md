@@ -154,7 +154,7 @@ The critical path is `P0-001 -> P0-002 -> P0-003 -> P0-004 -> P0-005 -> P0-006 -
 
 ## P0-010 — Phase 0 proof command and release gate
 
-- **Implementation status:** In progress. PostgreSQL evidence now proves concurrent idempotent tenant provisioning commits exactly one tenant/default-role/administrator, audit event, outbox event and stored response, with changed-payload conflict and rollback coverage. The dedicated active-tenant proof record/event, dispatcher replay, end-to-end trace and CI evidence capture below remain.
+- **Implementation status:** In progress. The dedicated active-tenant command now requires the non-default `foundation:proof:execute` permission and PostgreSQL evidence proves concurrent exact retries commit one tenant-owned proof record, audit event, outbox event and stored response. The same test proves correlation across the record/audit/outbox, changed-payload conflict, tenant-B read isolation and that the same key in tenant B cannot replay tenant A's response. Command-level rollback injection is covered. Real RBAC persistence/composition, dispatcher retry, a trace spanning ingress and dispatch, and CI evidence capture remain.
 - **Persona:** Delivery lead.
 - **Intent:** Demonstrate all foundation controls together on one harmless command.
 - **Business value:** Proves the platform invariants before financially material domain work starts.

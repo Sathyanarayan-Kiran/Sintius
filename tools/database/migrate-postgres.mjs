@@ -5,7 +5,7 @@ import pg from "pg";
 
 const { Pool } = pg;
 const databaseUrl = process.env.SINTIUS_MIGRATION_DATABASE_URL ?? "postgresql://sintius_admin@127.0.0.1:54329/sintius";
-const migrationsDirectory = resolve(import.meta.dirname, "../../modules/identity-tenant/infrastructure/postgres/migrations");
+const modulesDirectory = resolve(import.meta.dirname, "../../modules");
 const pool = new Pool({ connectionString: databaseUrl, max: 1 });
 
 try {
@@ -19,9 +19,26 @@ try {
         applied_at timestamptz NOT NULL DEFAULT clock_timestamp()
       )
     `);
-    const migrationNames = (await readdir(migrationsDirectory)).filter((name) => name.endsWith(".sql")).sort();
-    for (const migrationName of migrationNames) {
-      const sql = await readFile(resolve(migrationsDirectory, migrationName), "utf8");
+    const migrations = [];
+    for (const moduleName of await readdir(modulesDirectory)) {
+      const migrationsDirectory = resolve(modulesDirectory, moduleName, "infrastructure/postgres/migrations");
+      let names;
+      try {
+        names = await readdir(migrationsDirectory);
+      } catch (error) {
+        if (error.code === "ENOENT") continue;
+        throw error;
+      }
+      for (const migrationName of names.filter((name) => name.endsWith(".sql"))) {
+        migrations.push({ migrationName, path: resolve(migrationsDirectory, migrationName) });
+      }
+    }
+    migrations.sort((left, right) => left.migrationName.localeCompare(right.migrationName));
+    const duplicates = migrations.filter((migration, index) => migrations[index - 1]?.migrationName === migration.migrationName);
+    if (duplicates.length > 0) throw new Error(`Duplicate migration name: ${duplicates[0].migrationName}`);
+    for (const migration of migrations) {
+      const { migrationName } = migration;
+      const sql = await readFile(migration.path, "utf8");
       const checksum = createHash("sha256").update(sql).digest("hex");
       const existing = await client.query("SELECT checksum FROM schema_migration WHERE migration_name = $1", [migrationName]);
       if (existing.rowCount === 1) {

@@ -18,6 +18,7 @@ export const PERMISSION_CATALOG = Object.freeze([
   "portal:subscription:change",
   "audit:read",
   "outbox:dead_letter:resolve",
+  "foundation:proof:execute",
 ] as const);
 
 export type Permission = (typeof PERMISSION_CATALOG)[number];

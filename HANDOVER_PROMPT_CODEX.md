@@ -29,11 +29,11 @@ Do not restart discovery or regenerate a smaller backlog.
 - Code style: ESM and erasable TypeScript only (no enums, namespaces, parameter properties; use `import type`, `#private` fields, `import.meta.dirname`). Node runs TypeScript directly. Runtime dependency `pg` is pinned for PostgreSQL. Unit tests are imported from `tests/all.test.ts`; database integration tests stay in the explicit `test:postgres` suite so `npm test` remains usable without Docker.
 - **There is no type checker.** `tsc` is not installed and Node only strips types, so type errors are not caught by `npm run check`. Propose a TypeScript dev dependency to the Product Owner rather than adding it silently.
 - Modules must not import other modules' internals. `tools/architecture-lint` validates each `modules/*/module.json` (ownedTables, publishedEvents, allowedModuleDependencies). Shared code lives in `platform/`.
-- Git: branch `master`, remote `origin` = `https://github.com/Sathyanarayan-Kiran/Sintius.git`. Latest commit `64d1794`. Commit and push only when the user asks.
+- Git: branch `master`, remote `origin` = `https://github.com/Sathyanarayan-Kiran/Sintius.git`. Verify the current head with `git log -1 --oneline`; commit and push only when the user asks.
 - GitHub push protection scans for secret patterns. Do not put literal secret-shaped strings (for example `sk_test_...`) in source or tests, even fake or documented ones; build them at runtime (`"sk_" + "test_..."`). History was rewritten once to remove one; a local branch `backup-before-secret-fix` still holds the flagged string and must never be pushed.
 - Git prints many "LF will be replaced by CRLF" warnings on this machine; they are harmless.
 - Local database: Docker Compose runs PostgreSQL 17 on `127.0.0.1:54329`; `db:up` waits for health, `db:migrate` applies checksum-protected forward-only migrations, and `db:down` retains the named volume. Compose trust authentication is strictly local-development configuration.
-- Baseline: `npm run check` passes with **122 unit tests plus 9 PostgreSQL integration tests (131 total)**. Run it before editing and confirm.
+- Baseline: `npm run check` passes with **127 unit tests plus 10 PostgreSQL integration tests (137 total)**. Run it before editing and confirm.
 
 ## 3. What exists (verify by reading; do not trust this list blindly)
 
@@ -66,6 +66,9 @@ Deterministic canonical hashing, `IdempotencyStore` atomic-claim contract, `crea
 ### modules/audit-governance
 Owns `approval_request` (Audit & Governance, per the canonical sources); `approval_policy` stays with identity-tenant and is read through a port. `domain/approval.ts`: PENDING, APPROVED, REJECTED, EXPIRED, CANCELLED; separation of duties per policy; distinct approvers; exact action/resource/version matching; version compare-and-set; cancel (maker only); expire (time-driven). `application/approval-commands.ts`: propose, decide, cancel. Deciding needs `approval:request:decide`, an interactive principal and MFA. Decision, audit event and outbox event commit in one unit of work.
 
+### modules/foundation-proof (P0-010)
+Test-only active-tenant proof command guarded by the non-default `foundation:proof:execute` permission. Migration 004 owns `foundation_proof_record` with forced RLS. Its PostgreSQL test proves concurrent exact replay yields one proof record/audit/outbox/idempotency result, correlation is consistent through the record/audit/envelope, changed payloads conflict, and tenant B cannot read or replay tenant A's stored response. The integration currently uses an allow test authorizer; real PostgreSQL RBAC composition, dispatcher retry, ingress-to-dispatch tracing and CI evidence remain.
+
 ## 4. Durable status (in `docs/implementation/implementation-roadmap-data.js`)
 
 | Story | Epic | Progress | Tests | Main remaining work |
@@ -74,7 +77,7 @@ Owns `approval_request` (Audit & Governance, per the canonical sources); `approv
 | US-BL-001-01 (P0-001) | SUB-E001 | 90 | TC-001-01-03 `partial` | PostgreSQL/RLS binding is proven; worker/job context and real cache adapter remain |
 | US-BL-001-02 (P0-006) | SUB-E001 | 85 | 3 `passing` | HTTP wiring/headers, failed-final storage, retention source, cleanup job and metrics |
 | US-BL-001-03 (P0-007) | SUB-E001 | 55 | 1 `passing`, 1 `partial` | atomic insert proven; PostgreSQL leasing/inbox, broker, schema validation, runtime, gap detection, metrics and retention remain |
-| US-BL-001-04 (P0-009) | SUB-E001 | 30 | 2 `partial` | eight foundation tables use forced RLS; extend to all tenant tables and automate the complete A/B CRUD matrix |
+| US-BL-001-04 (P0-009) | SUB-E001 | 32 | 2 `partial` | nine foundation tables use forced RLS; extend to all tenant tables and automate the complete A/B CRUD matrix |
 | US-BL-002-01 (P0-003) | SUB-E002 | 90 | 3 `passing` | reviewed platform RBAC and HTTP ingress |
 | US-BL-002-02 (P0-004) | SUB-E002 | 70 | 2 `partial` | real OIDC/SAML signature and key discovery, durable sessions, security audit facts |
 | US-BL-002-04 (P0-004) | SUB-E002 | 70 | 1 `partial`, 1 `passing` | signed-token or mTLS adapter, issuance and rotation |
@@ -86,7 +89,7 @@ Do not mark all of US-MSR-080-01 implemented: it also covers authorization, encr
 ## 5. Known gaps and design choices to review
 
 Gaps found in review (fix or raise them):
-1. The dedicated P0-010 active-tenant proof record/event, dispatcher replay, end-to-end trace and CI evidence capture remain; concurrent tenant provisioning now proves the core database invariant.
+1. P0-010 now has the dedicated active-tenant proof record/event and PostgreSQL isolation/atomicity evidence. Real RBAC composition, dispatcher retry, end-to-end ingress-to-dispatch trace and CI evidence capture remain.
 2. The `PlatformAuthorizer` for provisioning and lifecycle is only a deny-by-default port; platform roles are not modeled.
 3. Only three modules' commands audit through the shared recorder plus dead-letter resolution; every future material command must too.
 4. Audit-write-failure paging, the metrics named in the backlog, and the log/trace secret-scan release gate are not built.
@@ -98,7 +101,7 @@ Design choices I made that the Product Owner has not confirmed: dead-letter bloc
 Do these in order, one bounded tranche at a time, and stop to report after each.
 
 **A. Decision-independent work**
-1. Add the dedicated P0-010 active-tenant proof record/event, end-to-end trace and CI evidence capture; do not call the release gate complete before its remaining acceptance criteria pass.
+1. Continue P0-010 with PostgreSQL RBAC composition, dispatcher retry, end-to-end ingress-to-dispatch trace and CI evidence capture; do not call the release gate complete before those remaining acceptance criteria pass.
 2. Consumer-side `aggregate_version` gap detection helper for use after a dead-letter skip.
 3. Propose (do not silently add) a type-check step, and propose a permission or role matrix review for the 12 personas.
 4. An HTTP ingress adapter design note for `apps/api` (correlation and causation IDs, `Idempotency-Key`, `Retry-After`, problem+json). Build it only if the Product Owner approves the framework choice; the repo has no web framework yet.
@@ -106,8 +109,8 @@ Do these in order, one bounded tranche at a time, and stop to report after each.
 **B. PostgreSQL tranche (Docker Compose decision resolved)**
 1. **Complete for tenant lifecycle:** migration and adapter for identity-tenant, transaction-local tenant binding, forced RLS, repository filters, commit/rollback and CAS concurrency evidence. TC-002-01-03 is `passing`; TC-001-01-03 is conservatively `partial` until the real cache and worker/job paths are integrated.
 2. Idempotency adapter/unique-index race proof is complete. Next add outbox SKIP LOCKED leasing, explicit audit UPDATE/DELETE denial tests, then approval persistence.
-3. Extend **P0-009** (`BL-001-04`, `BL-017-03`) across every tenant-owned table and add the full tenant A/B CRUD matrix. Current proof covers the eight foundation tables, but the roadmap story is broader.
-4. **P0-010 is in progress:** concurrent idempotent provisioning proves one tenant/default-role/admin, audit, outbox and stored response. The dedicated active-tenant proof record/event, dispatcher retry, cross-tenant observation test, trace and CI release evidence remain.
+3. Extend **P0-009** (`BL-001-04`, `BL-017-03`) across every tenant-owned table and add the full tenant A/B CRUD matrix. Current proof covers the nine foundation tables, but the roadmap story is broader.
+4. **P0-010 is in progress:** concurrent active-tenant execution proves one proof record, audit, outbox and stored response; cross-tenant observation/replay is covered. Real RBAC composition, dispatcher retry, ingress-to-dispatch trace and CI release evidence remain.
 
 **C. Blocked on identity-provider choices**
 Production OIDC/JWKS, SAML certificate and workload signed-token or mTLS adapters, durable session and revocation storage, authentication audit facts. Propose options; do not select vendors or libraries silently.

@@ -1,0 +1,10 @@
+{
+  "name": "@sintius/foundation-proof",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./application/proof-command.ts",
+    "./postgres": "./infrastructure/postgres/proof-persistence.ts"
+  }
+}

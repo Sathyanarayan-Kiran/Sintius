@@ -1,0 +1,119 @@
+import pg from "pg";
+import type { AuditEvent } from "../../../../platform/audit/src/index.ts";
+import type { EventEnvelope } from "../../../../platform/event-envelope/src/index.ts";
+import { createPostgresIdempotencyStore } from "../../../../platform/idempotency/infrastructure/postgres/store.ts";
+import { problem } from "../../../../platform/problem-model/src/index.ts";
+import type { TenantId } from "../../../../platform/tenant-context/src/index.ts";
+import type { FoundationProofPersistence, FoundationProofUnitOfWork } from "../../application/ports.ts";
+
+const { Pool } = pg;
+
+interface QueryResult {
+  readonly rowCount: number | null;
+  readonly rows: readonly Record<string, unknown>[];
+}
+
+interface SqlClient {
+  query(sql: string, parameters?: readonly unknown[]): Promise<QueryResult>;
+  release(): void;
+}
+
+function assertTenant(actual: string, expected: TenantId): void {
+  if (actual !== expected) throw problem({ code: "tenant_context_mismatch", detail: "The proof transaction is bound to another tenant." });
+}
+
+function unitOfWork(client: SqlClient, boundTenantId: TenantId, isOpen: () => boolean): FoundationProofUnitOfWork {
+  const guard = () => {
+    if (!isOpen()) throw new Error("PostgreSQL foundation proof unit of work used outside its transaction.");
+  };
+  return {
+    idempotency: createPostgresIdempotencyStore(client, boundTenantId, isOpen),
+    records: {
+      insert: async (record) => {
+        guard();
+        assertTenant(record.tenantId, boundTenantId);
+        await client.query(
+          `INSERT INTO foundation_proof_record
+             (tenant_id, proof_record_id, label, actor_id, correlation_id, recorded_at)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [record.tenantId, record.proofRecordId, record.label, record.actorId, record.correlationId, record.recordedAt],
+        );
+      },
+    },
+    audit: {
+      append: async (event: Readonly<AuditEvent>) => {
+        guard();
+        assertTenant(event.tenantId, boundTenantId);
+        await client.query(
+          `INSERT INTO audit_event (
+             tenant_id, audit_event_id, occurred_at, recorded_at, actor, action, target, reason,
+             correlation_id, causation_id, approval_id, before_snapshot, after_snapshot, evidence_hash
+           ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14)`,
+          [
+            event.tenantId, event.auditEventId, event.occurredAt, event.recordedAt, JSON.stringify(event.actor),
+            event.action, JSON.stringify(event.target), event.reason ?? null, event.correlationId,
+            event.causationId ?? null, event.approvalId ?? null,
+            event.before === undefined ? null : JSON.stringify(event.before),
+            event.after === undefined ? null : JSON.stringify(event.after), event.evidenceHash,
+          ],
+        );
+      },
+    },
+    outbox: {
+      append: async (envelope: Readonly<EventEnvelope>) => {
+        guard();
+        assertTenant(envelope.tenant_id, boundTenantId);
+        await client.query(
+          `INSERT INTO outbox_event (
+             tenant_id, event_id, event_type, aggregate_type, aggregate_id, aggregate_version,
+             envelope, next_attempt_at, appended_at
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)`,
+          [
+            envelope.tenant_id, envelope.id, envelope.type, envelope.aggregate_type, envelope.aggregate_id,
+            envelope.aggregate_version, JSON.stringify(envelope), envelope.recorded_at, envelope.recorded_at,
+          ],
+        );
+      },
+    },
+  };
+}
+
+export class PostgresFoundationProofPersistence implements FoundationProofPersistence {
+  readonly #pool;
+
+  constructor(options: { readonly connectionString?: string; readonly maxConnections?: number } = {}) {
+    this.#pool = new Pool({
+      connectionString: options.connectionString ?? process.env.SINTIUS_DATABASE_URL ?? "postgresql://sintius_app@127.0.0.1:54329/sintius",
+      max: options.maxConnections ?? 5,
+    });
+  }
+
+  async runInTransaction<T>(
+    scope: { readonly tenantId: TenantId; readonly correlationId: string; readonly causationId?: string },
+    work: (unitOfWork: FoundationProofUnitOfWork) => Promise<T>,
+  ): Promise<T> {
+    const client = (await this.#pool.connect()) as SqlClient;
+    let open = true;
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('app.tenant_id', $1, true)", [scope.tenantId]);
+      const binding = await client.query("SELECT current_setting('app.tenant_id', true) AS tenant_id");
+      assertTenant(String(binding.rows[0]?.tenant_id ?? ""), scope.tenantId);
+      const result = await work(unitOfWork(client, scope.tenantId, () => open));
+      await client.query("COMMIT");
+      open = false;
+      return result;
+    } catch (error) {
+      if (open) await client.query("ROLLBACK").catch(() => undefined);
+      open = false;
+      throw error;
+    } finally {
+      open = false;
+      client.release();
+    }
+  }
+
+  async close(): Promise<void> {
+    await this.#pool.end();
+  }
+}
