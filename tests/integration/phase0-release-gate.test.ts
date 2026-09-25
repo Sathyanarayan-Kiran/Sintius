@@ -77,7 +77,7 @@ test("P0-010 PostgreSQL release gate: RBAC-guarded idempotent proof, retried dis
   // 1. Provision and activate two tenants through the real lifecycle commands.
   const tenantCommands = createTenantCommands({
     persistence: open(new PostgresTenantPersistence({ connectionString: appUrl })),
-    authorizer: new AllowListAuthorizer(["tenant:provision", "tenant:manage_lifecycle"]),
+    authorizer: new AllowListAuthorizer(["platform:tenant:provision", "platform:tenant:lifecycle"]),
     audit: createAuditRecorder({ policy: createAuditPolicy(TENANT_AUDIT_FIELDS), clock, newId: () => `aud_gate_${++sequence}` }),
     clock,
   });

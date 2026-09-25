@@ -46,7 +46,7 @@ function commands(audit = createAuditRecorder({
 })) {
   const raw = createTenantCommands({
     persistence,
-    authorizer: new AllowListAuthorizer(["tenant:provision", "tenant:manage_lifecycle"]),
+    authorizer: new AllowListAuthorizer(["platform:tenant:provision", "platform:tenant:lifecycle"]),
     audit,
     clock: () => NOW,
     newEventId: () => `evt_pg_${++sequence}`,

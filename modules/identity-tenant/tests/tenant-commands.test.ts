@@ -10,7 +10,7 @@ import { testIdempotencyKey } from "../../../tests/support/idempotency-key.ts";
 
 const NOW = new Date("2026-09-23T10:00:00.000Z");
 
-function setup(allowed: readonly ("tenant:provision" | "tenant:manage_lifecycle")[] = ["tenant:provision", "tenant:manage_lifecycle"]) {
+function setup(allowed: readonly ("platform:tenant:provision" | "platform:tenant:lifecycle")[] = ["platform:tenant:provision", "platform:tenant:lifecycle"]) {
   const persistence = new InMemoryTenantPersistence();
   const authorizer = new AllowListAuthorizer(allowed);
   let counter = 0;
@@ -127,7 +127,7 @@ test("authorization is checked first: a denied caller starts no transaction", as
   const { persistence, authorizer, commands, context } = setup([]);
   await assert.rejects(commands.provisionTenant(context, provisionInput), rejectsWith("platform_access_denied"));
   await assert.rejects(commands.activateTenant(context, { tenantId: "tenant_A", expectedVersion: 1 }), rejectsWith("platform_access_denied"));
-  assert.deepEqual(authorizer.calls, ["tenant:provision", "tenant:manage_lifecycle"]);
+  assert.deepEqual(authorizer.calls, ["platform:tenant:provision", "platform:tenant:lifecycle"]);
   assert.equal(persistence.transactionsStarted, 0);
 });
 

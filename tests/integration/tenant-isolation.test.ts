@@ -146,12 +146,13 @@ test("TC-017-03-02 an injected isolation regression fails the gate", async () =>
   const client = await admin.connect();
   try {
     await client.query("BEGIN");
-    // Five independent regressions, each of the kind a careless migration could introduce.
+    // Six independent regressions, each of the kind a careless migration could introduce.
     await client.query("CREATE POLICY isolation_regression ON foundation_proof_record FOR SELECT TO sintius_app USING (true)");
     await client.query("ALTER TABLE tenant_role NO FORCE ROW LEVEL SECURITY");
     await client.query("CREATE TABLE isolation_regression (id integer PRIMARY KEY)");
     await client.query("GRANT DELETE ON audit_event TO sintius_app");
     await client.query("ALTER ROLE sintius_dispatcher BYPASSRLS");
+    await client.query("GRANT INSERT ON credential_revocation TO sintius_app");
 
     const findings = await auditIsolationCatalog(client);
     for (const expected of [
@@ -160,6 +161,7 @@ test("TC-017-03-02 an injected isolation regression fails the gate", async () =>
       "isolation_regression: no tenant_id column",
       "sintius_app on audit_event: granted [DELETE, INSERT], reviewed [INSERT]",
       "sintius_dispatcher: has bypassrls",
+      "sintius_app on credential_revocation: application roles may only read non-tenant tables",
     ]) {
       assert.ok(findings.includes(expected), `expected finding "${expected}" in:\n${findings.join("\n")}`);
     }
