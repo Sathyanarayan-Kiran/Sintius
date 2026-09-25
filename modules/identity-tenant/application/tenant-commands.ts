@@ -1,3 +1,4 @@
+import { DEFAULT_APPROVAL_POLICIES } from "../domain/approval-defaults.ts";
 import type { AuditRecorder } from "../../../platform/audit/src/index.ts";
 import { buildEventEnvelopeFor, eventScopeForPlatformCommand, type BuildEventInput } from "../../../platform/event-envelope/src/index.ts";
 import { createPlatformIdempotentExecutor, type StoredResponse } from "../../../platform/idempotency/src/index.ts";
@@ -154,6 +155,7 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
         await unitOfWork.tenants.insert(change.tenant);
         await unitOfWork.roles.insertDefaultAdministratorRole({ tenantId: id, roleCode: "tenant_administrator" });
         await unitOfWork.memberships.insertInitialAdministrator({ tenantId: id, actorId: administrator, roleCode: "tenant_administrator" });
+        for (const policy of DEFAULT_APPROVAL_POLICIES) await unitOfWork.approvalPolicies.insert({ tenantId: id, ...policy });
         await audit.recordForPlatformCommand(unitOfWork.audit, context, id, {
           action: auditActionFor(change),
           target: { type: "Tenant", id },

@@ -2,7 +2,7 @@ import type { AuditRecorder } from "../../../platform/audit/src/index.ts";
 import { buildEventEnvelope } from "../../../platform/event-envelope/src/index.ts";
 import { problem } from "../../../platform/problem-model/src/index.ts";
 import { actorId, currentTenantContext } from "../../../platform/tenant-context/src/index.ts";
-import { assertKnownPermission, constraintsSatisfied, effectivePermissions, type ConstraintValue } from "../domain/authorization.ts";
+import { assertKnownPermission, constraintsSatisfied, grantedByRoles, type ConstraintValue } from "../domain/authorization.ts";
 import type { PermissionConstraintStore, PermissionGrantStore, SecurityPersistence } from "./authorization-ports.ts";
 import type { DefaultRoleCode } from "./ports.ts";
 
@@ -21,7 +21,7 @@ export function createTenantAuthorizer(dependencies: { readonly grants: Permissi
       granted = context.scopes.includes(permission);
     } else {
       const roles = await dependencies.grants.loadAssignedRoles(context.tenantId, context.actorId);
-      granted = effectivePermissions(roles).has(permission);
+      granted = grantedByRoles(roles, permission, resourceAttributes);
     }
     if (!granted || dependencies.constraints === undefined) return granted;
     try {

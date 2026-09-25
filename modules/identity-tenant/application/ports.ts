@@ -48,12 +48,26 @@ export interface TenantMembershipRepository {
   insertInitialAdministrator(record: Readonly<InitialAdministratorRecord>): Promise<void>;
 }
 
+export interface ApprovalPolicyRecord {
+  readonly tenantId: TenantId;
+  readonly actionType: string;
+  readonly requiredApprovals: number;
+  readonly separationOfDuties: boolean;
+  readonly expiresAfterSeconds: number;
+  readonly approverRequirements: readonly { readonly permission: string; readonly count: number }[];
+}
+
+export interface ApprovalPolicyRepository {
+  insert(record: Readonly<ApprovalPolicyRecord>): Promise<void>;
+}
+
 /** Repositories bound to one database transaction. */
 export interface TenantUnitOfWork {
   readonly idempotency: IdempotencyStore;
   readonly tenants: TenantRepository;
   readonly roles: TenantRoleRepository;
   readonly memberships: TenantMembershipRepository;
+  readonly approvalPolicies: ApprovalPolicyRepository;
   readonly audit: AuditWriter;
   readonly outbox: OutboxWriter;
 }

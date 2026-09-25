@@ -177,6 +177,18 @@
         "platform/tenant-context/src/job.ts",
         ".github/workflows/ci.yml"
       ]
+    },
+    {
+      "requirementId": "MSR-061-2B41953787",
+      "reviewedAt": "2026-09-25",
+      "summary": "Authorization is tenant-scoped RBAC with optional attribute-based narrowing at two levels. createTenantAuthorizer loads the actor's active roles live from the tenant-bound grant store, so revocation applies on the next check. It is deny-by-default over a fixed permission catalog, and roles never carry across tenants. Tenant constraints (PermissionConstraintStore) and role-scoped limits (tenant_role.permission_limits) can only narrow a grant, and fail closed on a missing or mistyped attribute. Proven by the persona allow/deny matrix across two tenants and on PostgreSQL. Scope: the 12 per-persona catalogue requirements (MSR-061 persona entries) are not claimed, because most personas' work permissions arrive with later phases.",
+      "code": [
+        "modules/identity-tenant/domain/authorization.ts",
+        "modules/identity-tenant/application/authorization.ts",
+        "modules/identity-tenant/domain/persona-matrix.ts",
+        "modules/identity-tenant/infrastructure/postgres/grant-store.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/011_role_permission_limits.sql"
+      ]
     }
   ]
 }

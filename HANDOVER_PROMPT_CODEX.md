@@ -46,7 +46,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
   - "Backlog traceability: complete";
   - "Implementation coverage: incomplete (N of 1,335 with evidence)";
   - "Automated execution: only what actually ran".
-- **A mapped requirement is not an implemented one.** Implementation evidence lives in `docs/implementation/implementation-evidence.json`; it stood at **15 of 1,335** at handover. Claim a requirement only when all of these hold:
+- **A mapped requirement is not an implemented one.** Implementation evidence lives in `docs/implementation/implementation-evidence.json`; it stood at **16 of 1,335** at handover. Claim a requirement only when all of these hold:
   - every test mapped to it is `passing` in the roadmap data;
   - each of those tests exists as an automated test whose title contains its TC ID;
   - each of those tests passed in the CI run.
@@ -115,6 +115,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 | 008 | `approval_request` |
 | 009 | approver requirements (D4) |
 | 010 | `credential_revocation` |
+| 011 | role-scoped permission limits |
 
 **Tests and gate**
 
@@ -122,7 +123,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 - `npm run test:postgres` runs the PostgreSQL suite. Its files are listed explicitly in `tools/test/run-suite.mjs` and run one at a time, because they share a database. Add each new database test file there.
 - `npm run check` runs the whole local gate: typecheck, architecture, roadmap, requirement coverage, unit tests and the PostgreSQL suite.
 - `npm run check:evidence` re-verifies evidence claims against the TAP reports. To run it locally, first run the suites with `SINTIUS_TEST_REPORT_DIR=reports`.
-- **Baseline at handover:** 173 unit and 38 PostgreSQL tests, all passing (211 in total). Run `npm run check` before editing and confirm this baseline.
+- **Baseline at handover:** 177 unit and 39 PostgreSQL tests, all passing (216 in total). Run `npm run check` before editing and confirm this baseline.
 
 **CI**
 
@@ -262,7 +263,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 | US-BL-001-05 problems and trace | 95 | 2/2 passing | UI copy (deferred to the first UI story, D16) |
 | US-BL-002-01 tenant lifecycle | 98 | 3/3 passing | None for Phase 0 |
 | US-BL-002-02 administrator authentication | 90 | 2/2 passing | IdP product choice, revocation feed or command, admin-web login flow |
-| US-BL-002-03 RBAC and maker-checker | 70 | 1/2 (TC-002-03-01 partial) | **D9 persona matrix**, approval expiry sweeper, ApprovalPolicy management commands, ingress routes |
+| US-BL-002-03 RBAC and maker-checker | 88 | 2/2 passing | Approval expiry sweeper, ApprovalPolicy management commands, ingress routes (proposed for Phase 1) |
 | US-BL-002-04 workload identity | 85 | 2/2 passing | Issuance and rotation at the IdP, mTLS later |
 | US-BL-017-01 audit | 75 | 2/2 passing | PostgreSQL audit reader and `audit:read` route, hash-chain decision, retention |
 | US-BL-017-03 release blocking on isolation | 85 | 2/2 passing | Run against deployed roles once an environment exists |
@@ -277,7 +278,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 
 ## 5. Open items and choices awaiting the Product Owner
 
-1. **D9 persona matrix.** Awaiting the draft and the PO review; see section 6.
+1. **D9 persona matrix.** Done: reviewed by the PO on 2026-09-25 (`docs/implementation/persona-permission-matrix.md`).
 2. **Identity-provider product.** Candidates are Entra ID, Okta, Auth0, Cognito or Keycloak. It must support OIDC, MFA (emitting `amr` = `mfa`), SAML federation and client credentials. This does not block Phase 0.
 3. **Proposed Phase 0 deferrals, not yet explicitly confirmed:**
    - to Phase 1: the continuous dispatcher runtime, the approval expiry sweeper and policy commands, and the PostgreSQL audit reader;
@@ -285,17 +286,11 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 4. **Outbox sequence grant.** `sintius_app` holds `SELECT, USAGE` on `outbox_event_entry_id_seq` (from migration 005), which it does not need. It is recorded in the privilege manifest for now; revoking it takes a one-line migration if the PO agrees.
 5. **D7 (UUIDv7 primary keys).** Accepted, not yet implemented. It is cheapest before Phase 1 adds billing tables, so do it right after Phase 0 exit.
 
-## 6. What to do next (the Phase 0 exit plan; PRs 1–3 are done)
+## 6. What to do next (the Phase 0 exit plan; PRs 1–4 are done)
 
 Work in order, one PR each, and stop to report after each.
 
-**PR 4: D9 persona permission matrix** (US-BL-002-03, TC-002-03-01)
-
-1. Master spec §61 lists 12 personas but no grants. Draft `docs/implementation/persona-permission-matrix.md` (or JSON plus a rendered table): personas × `PERMISSION_CATALOG` entries.
-2. Mark each cell either *spec-derived*, citing its source (API spec §4, the UX information architecture, SUB-0014 or similar), or *proposed*.
-3. Only spec-derived grants may ship by default. Proposed cells stay denied until the Product Owner approves them.
-4. **Stop and ask the Product Owner to review before encoding it.**
-5. After approval, encode the default role templates and add an automated allow/deny matrix test titled `TC-002-03-01 …` that covers every persona and permission. Then mark TC-002-03-01 `passing`.
+**PR 4 (done): D9 persona permission matrix.** See `modules/identity-tenant/domain/persona-matrix.ts` and `docs/implementation/persona-permission-matrix.md`. When a later story adds a permission, add its persona grants there with a basis and sources, regenerate the document table from `renderPersonaMatrix()`, and get the Product Owner's decision on anything inferred or proposed.
 
 **PR 5: exit package**
 

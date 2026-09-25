@@ -3,6 +3,7 @@ import type { EventEnvelope } from "../../../platform/event-envelope/src/index.t
 import type { IdempotencyRecord } from "../../../platform/idempotency/src/index.ts";
 import { problem } from "../../../platform/problem-model/src/index.ts";
 import type {
+  ApprovalPolicyRecord,
   DefaultRoleRecord,
   InitialAdministratorRecord,
   PlatformAuthorizer,
@@ -21,6 +22,7 @@ interface Store {
   tenants: Map<string, TenantSnapshot>;
   roles: DefaultRoleRecord[];
   memberships: InitialAdministratorRecord[];
+  policies: ApprovalPolicyRecord[];
   audit: AuditEvent[];
   outbox: EventEnvelope[];
   idempotency: Map<string, IdempotencyRecord>;
@@ -29,7 +31,7 @@ interface Store {
 export type FailurePoint = "role" | "membership" | "audit" | "outbox";
 
 export class InMemoryTenantPersistence implements TenantPersistence {
-  committed: Store = { tenants: new Map(), roles: [], memberships: [], audit: [], outbox: [], idempotency: new Map() };
+  committed: Store = { tenants: new Map(), roles: [], memberships: [], policies: [], audit: [], outbox: [], idempotency: new Map() };
   transactionsStarted = 0;
   failAt: FailurePoint | undefined;
 
@@ -39,6 +41,7 @@ export class InMemoryTenantPersistence implements TenantPersistence {
       tenants: new Map(this.committed.tenants),
       roles: [...this.committed.roles],
       memberships: [...this.committed.memberships],
+      policies: [...this.committed.policies],
       audit: [...this.committed.audit],
       outbox: [...this.committed.outbox],
       idempotency: new Map(this.committed.idempotency),
@@ -109,6 +112,12 @@ export class InMemoryTenantPersistence implements TenantPersistence {
           guard();
           failIf("membership");
           staged.memberships.push(record);
+        },
+      },
+      approvalPolicies: {
+        insert: async (record) => {
+          guard();
+          staged.policies.push(record);
         },
       },
       audit: {

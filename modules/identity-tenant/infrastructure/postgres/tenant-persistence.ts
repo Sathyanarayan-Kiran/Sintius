@@ -112,6 +112,17 @@ function unitOfWork(client: SqlClient, boundTenantId: TenantId, isOpen: () => bo
         );
       },
     },
+    approvalPolicies: {
+      insert: async (record) => {
+        guard();
+        assertTenantMatch(record.tenantId, boundTenantId);
+        await client.query(
+          `INSERT INTO approval_policy (tenant_id, action_type, required_approvals, separation_of_duties, expires_after_seconds, approver_requirements)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+          [record.tenantId, record.actionType, record.requiredApprovals, record.separationOfDuties, record.expiresAfterSeconds, JSON.stringify(record.approverRequirements)],
+        );
+      },
+    },
     audit: {
       append: async (event: Readonly<AuditEvent>) => {
         guard();

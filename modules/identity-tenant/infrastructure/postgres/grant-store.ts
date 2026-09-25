@@ -1,9 +1,22 @@
 import pg from "pg";
 import type { ActorId, TenantId } from "../../../../platform/tenant-context/src/index.ts";
 import type { PermissionGrantStore } from "../../application/authorization-ports.ts";
-import type { Permission, RoleSnapshot, RoleStatus } from "../../domain/authorization.ts";
+import type { ConstraintOperator, ConstraintValue, Permission, PermissionConstraint, RoleSnapshot, RoleStatus } from "../../domain/authorization.ts";
 
 const { Pool } = pg;
+
+/** Stored limits are data: anything malformed becomes a limit no request can satisfy (fail closed). */
+function limitFrom(value: unknown): Readonly<PermissionConstraint> {
+  const item = (typeof value === "object" && value !== null ? value : {}) as Record<string, unknown>;
+  const scalar = (candidate: unknown): candidate is ConstraintValue => typeof candidate === "string" || typeof candidate === "number";
+  const limitValue = Array.isArray(item.value) ? item.value.filter(scalar) : scalar(item.value) ? item.value : "";
+  return Object.freeze({
+    permission: String(item.permission) as Permission,
+    attribute: typeof item.attribute === "string" ? item.attribute : "",
+    operator: (typeof item.operator === "string" ? item.operator : "invalid") as ConstraintOperator,
+    value: limitValue,
+  });
+}
 
 /**
  * Live role lookup for `createTenantAuthorizer`. Every lookup is its own read transaction bound to
@@ -27,7 +40,7 @@ export class PostgresPermissionGrantStore implements PermissionGrantStore {
       await client.query("BEGIN READ ONLY");
       await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
       const result = await client.query(
-        `SELECT role.role_code, role.permissions, role.status
+        `SELECT role.role_code, role.permissions, role.status, role.permission_limits
            FROM tenant_role_assignment assignment
            JOIN tenant_role role
              ON role.tenant_id = assignment.tenant_id AND role.role_code = assignment.role_code
@@ -46,6 +59,7 @@ export class PostgresPermissionGrantStore implements PermissionGrantStore {
             (Array.isArray(row.permissions) ? row.permissions : []).filter((value: unknown): value is Permission => typeof value === "string"),
           ),
           status: String(row.status) as RoleStatus,
+          limits: Object.freeze((Array.isArray(row.permission_limits) ? row.permission_limits : []).map(limitFrom)),
         }),
       );
     } catch (error) {
