@@ -8,6 +8,27 @@ const implementationDir = resolve(root, "docs/implementation");
 const jiraDir = resolve(implementationDir, "jira");
 mkdirSync(jiraDir, { recursive: true });
 
+/**
+ * Maps a story's durable implementation status (implementation-roadmap-data.js) to one of Jira's
+ * three default workflow statuses, so a CSV re-import (or a status-sync job hitting the Jira REST
+ * API with the same mapping) reflects real delivery state rather than a static "To Do". `blocked`
+ * maps to "To Do" because a default Jira workflow has no "Blocked" status; the story's own
+ * Implementation Status column (kept alongside) preserves the distinction.
+ */
+function jiraStatusFor(implementationStatus) {
+  if (implementationStatus === "implemented") return "Done";
+  if (implementationStatus === "in_progress") return "In Progress";
+  return "To Do"; // not_started, blocked, or unset
+}
+
+/** An epic's Jira status rolls up from its stories: Done only when every story is Done. */
+function epicJiraStatus(stories) {
+  if (stories.length === 0) return "To Do";
+  if (stories.every((story) => story.implementation === "implemented")) return "Done";
+  if (stories.some((story) => story.implementation === "implemented" || story.implementation === "in_progress")) return "In Progress";
+  return "To Do";
+}
+
 const register = JSON.parse(readFileSync(resolve(implementationDir, "requirement-register.json"), "utf8"));
 const roadmapContext = {};
 runInNewContext(readFileSync(resolve(implementationDir, "implementation-roadmap-data.js"), "utf8"), roadmapContext);
@@ -278,7 +299,10 @@ const jiraRows = [];
 for (const epic of canonicalRoadmap.epics) jiraRows.push({
   "Issue ID": epicIssueId.get(epic.id), "Issue Type": "Epic", Summary: epic.name, Description: epic.goal,
   "Epic Name": epic.id, "Epic Link": "", Parent: "", "External ID": epic.id, Labels: "sintius master-specification",
-  Priority: "High", Status: "To Do", "Acceptance Criteria": "", "Requirement IDs": "", "Test IDs": "",
+  // Rolled up from ALL stories assigned to this epic (canonical + source-derived), not just the
+  // preserved canonical subset, so a generated gap story still pending keeps the epic out of Done.
+  Priority: "High", Status: epicJiraStatus(allStories.filter((story) => story.epicId === epic.id)), "Implementation Status": "", Progress: "",
+  "Acceptance Criteria": "", "Requirement IDs": "", "Test IDs": "",
   "Implementation Phase": epic.phase, Source: epic.sourceId
 });
 for (const story of allStories) {
@@ -290,7 +314,8 @@ for (const story of allStories) {
     "Issue ID": nextIssueId++, "Issue Type": "Story", Summary: story.title,
     Description: story.description || `As a ${story.persona}, I want ${story.title.toLowerCase()}, so that ${epic.goal.charAt(0).toLowerCase()}${epic.goal.slice(1)}`,
     "Epic Name": "", "Epic Link": story.epicId, Parent: epicIssueId.get(story.epicId), "External ID": story.id,
-    Labels: `sintius ${story.phase.toLowerCase().replaceAll(" ", "-")} master-specification`, Priority: "Medium", Status: "To Do",
+    Labels: `sintius ${story.phase.toLowerCase().replaceAll(" ", "-")} master-specification`, Priority: "Medium",
+    Status: jiraStatusFor(story.implementation), "Implementation Status": story.implementation || "not_started", Progress: story.progress ?? "",
     "Acceptance Criteria": acceptance.join("\n"), "Requirement IDs": (story.requirementIds || []).join(";"),
     "Test IDs": story.tests.map((test) => test.id).join(";"), "Implementation Phase": story.phase,
     Source: story.sourceSection ? `Master specification §${story.sourceSection}` : story.backlog.join(";")

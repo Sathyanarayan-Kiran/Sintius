@@ -8,11 +8,11 @@ Current generated baseline:
 - 17 canonical epics and 270 stories: 103 preserved canonical stories plus 167 source-derived gap stories.
 - 1,567 acceptance criteria and 1,469 associated tests.
 - 1,335/1,335 accepted requirements linked to a story, acceptance criterion and test.
-- 0/1,335 accepted requirements currently carry implementation evidence; Jira import does not imply delivery completion.
+- 18/1,335 accepted requirements currently carry implementation evidence (`docs/implementation/implementation-evidence.json`); a story's `Status`/`Implementation Status` below reflects delivery, not the same evidence count — a story can be `implemented` while the specification requirements it maps to still await review.
 
 ## Files
 
-- `sintius-jira-issues.csv` — 17 epics plus the complete canonical and source-derived story backlog.
+- `sintius-jira-issues.csv` — 17 epics plus the complete canonical and source-derived story backlog. `Status`, `Implementation Status` and `Progress` are derived every run from each story's durable status in `docs/implementation/implementation-roadmap-data.js`; an epic's `Status` rolls up from every story assigned to it (canonical and source-derived).
 - `sintius-requirement-traceability.csv` — one row for every extracted source candidate, including disposition, source location, story, acceptance-criterion and test links.
 - `sintius-test-catalogue.csv` — associated tests, planned automation state and evidence placeholder.
 
@@ -30,11 +30,21 @@ Use Jira's external system CSV importer and map columns as follows:
 | Epic Link | Epic Link (company-managed projects) |
 | Parent | Parent (team-managed or current Jira hierarchy) |
 | External ID | A text custom field named `External ID` |
+| Status | Status (maps to Jira's default To Do / In Progress / Done; see below) |
+| Implementation Status | A text or select custom field named `Implementation Status` (preserves `not_started` / `in_progress` / `implemented` / `blocked`, since Jira's default workflow has no `Blocked` status) |
+| Progress | A number custom field named `Progress` (0–100) |
 | Acceptance Criteria | A multiline text custom field named `Acceptance Criteria` |
 | Requirement IDs | A multiline/text custom field named `Requirement IDs` |
 | Test IDs | A multiline/text custom field named `Test IDs` |
 | Implementation Phase | A text or select custom field |
 
-Import epics and stories in the same job when Jira supports `Issue ID`/`Parent`. If the target Jira configuration does not expose `Parent`, import epics first and map `Epic Link` in a second story import. Preserve `External ID`; it is the stable update and reconciliation key.
+Import epics and stories in the same job when Jira supports `Issue ID`/`Parent`. If the target Jira configuration does not expose `Parent`, import epics first and map `Epic Link` in a second story import. Preserve `External ID`; it is the stable update and reconciliation key — every subsequent status sync (manual re-import or the automated pipeline below) matches on it, never on Jira's own issue key.
 
 The traceability and test CSVs are governance registers rather than Jira issues. They can be imported into Jira Assets, a test-management application, or retained beside Jira as controlled evidence. No row claims implementation or passing test evidence unless that evidence exists.
+
+## Keeping Jira status in sync after the initial import
+
+A one-time CSV import gives you the backlog shape (epics, stories, acceptance criteria, links) but its `Status` is a snapshot from generation time. Two ways to keep it current, in increasing order of effort:
+
+1. **Re-import periodically.** Re-run `npm run backlog:generate` (or let CI do it) and re-import `sintius-jira-issues.csv` through Jira's CSV importer using **update** mode keyed on `External ID`. Jira's importer only touches fields present in the CSV, so this updates `Status`/`Implementation Status`/`Progress` without disturbing sprint assignments, comments or manual triage. Low effort, not real-time.
+2. **Push status transitions from CI on every merge to `master`** (the recommended pipeline — see the proposal in this session's reply, or a future `docs/implementation/jira-sync.md` if this is adopted). A CI step reads the same `implementation-roadmap-data.js` this file is generated from, diffs it against the last-synced state, and calls the Jira REST API (`POST /rest/api/3/issue/{key}/transitions`, matched by `External ID` via a saved JQL search or a stored `External ID → issue key` map) to move only the stories whose status changed. Real-time, requires a Jira API token as a CI secret and someone to own the mapping.
