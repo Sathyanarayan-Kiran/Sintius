@@ -1,0 +1,37 @@
+{
+  "captured_at": "2026-09-25",
+  "environment": {
+    "postgres_version": "16.13 (Ubuntu 16.13-0ubuntu0.24.04.1)",
+    "note": "Local development PostgreSQL 16, not the CI/production PostgreSQL 17 service; directional evidence only, per the decision proposal's own framing (SPIKE-03 is a 'short insert/index benchmark to confirm', not a capacity or production benchmark)."
+  },
+  "workload": {
+    "row_count": 200000,
+    "insert_shape": "1,000-row batched INSERTs into an otherwise-empty UNLOGGED table, then VACUUM (ANALYZE)",
+    "runs": 3
+  },
+  "results": [
+    {
+      "candidate": "text (UUIDv4-shaped, uncorrelated with insert order — today's scheme)",
+      "column_type": "text",
+      "insert_milliseconds": [2681, 1954, 1866],
+      "median_insert_milliseconds": 1954,
+      "index_size_mib": [15.05, 14.95, 14.81],
+      "median_index_size_mib": 14.95,
+      "total_relation_size_mib": [40.72, 40.62, 40.48]
+    },
+    {
+      "candidate": "uuid (UUIDv7, time-ordered — D7's proposal)",
+      "column_type": "uuid",
+      "insert_milliseconds": [1689, 1862, 1637],
+      "median_insert_milliseconds": 1689,
+      "index_size_mib": [8.33, 8.30, 8.37],
+      "median_index_size_mib": 8.33,
+      "total_relation_size_mib": [30.71, 30.69, 30.75]
+    }
+  ],
+  "summary": {
+    "index_size_reduction_percent": 44.3,
+    "median_insert_time_reduction_percent": 13.6,
+    "conclusion": "UUIDv7 confirms the expected B-tree locality benefit over an uncorrelated text/UUIDv4 key at this row count: roughly 44% smaller primary-key index and a consistently equal-or-faster batched insert. This confirms D7's premise; it does not by itself size the cost of the migration (see the migration plan in this directory)."
+  }
+}
