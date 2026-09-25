@@ -138,6 +138,7 @@ The critical path is `P0-001 -> P0-002 -> P0-003 -> P0-004 -> P0-005 -> P0-006 -
 
 ## P0-009 — RLS and mandatory repository filters (`BL-001-04`, `BL-017-03`)
 
+- **Implementation status:** Gate in place. `tests/integration/tenant-isolation.test.ts` runs in the required Release gate job: a catalog audit (tenant_id, forced RLS, tenant-bound policies, reviewed privilege manifest, no bypass roles, views or SECURITY DEFINER functions) and an A/B attack matrix over every table as `sintius_app` and `sintius_dispatcher`, including missing context, re-tenanting updates and positive controls; an injected-regression test proves it fails. Worker context is established by `runTenantJob`. Remaining: alerting on RLS and missing-context denials.
 - **Persona:** Security engineer.
 - **Intent:** Enforce tenant isolation independently in application repositories and PostgreSQL RLS.
 - **Business value:** Turns a coding mistake into a denied query rather than a breach.

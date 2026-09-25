@@ -253,6 +253,11 @@ export function runWithTenantContext<T>(context: Readonly<TenantContext>, operat
   return storage.run(context, operation);
 }
 
+/** The active context, if any. Internal to this package: application code uses currentTenantContext. */
+export function activeTenantContext(): Readonly<TenantContext> | undefined {
+  return storage.getStore();
+}
+
 export function currentTenantContext(): Readonly<TenantContext> {
   const context = storage.getStore();
   if (context === undefined) {

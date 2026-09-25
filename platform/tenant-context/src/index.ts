@@ -25,4 +25,6 @@ export type { TenantCommandHandler } from "./command.ts";
 export { inTenantTransaction } from "./transaction.ts";
 export type { TenantTransaction, TenantTransactionAdapter, TenantTransactionScope } from "./transaction.ts";
 export { assertIssuedPlatformContext, resolvePlatformCommandContext } from "./platform.ts";
+export { runTenantJob } from "./job.ts";
+export type { TenantJobRun } from "./job.ts";
 export type { PlatformCommandContext, ResolvePlatformCommandContextInput } from "./platform.ts";

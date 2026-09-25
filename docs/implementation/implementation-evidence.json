@@ -125,6 +125,58 @@
         "modules/identity-tenant/application/tenant-commands.ts",
         "platform/outbox/src/operations.ts"
       ]
+    },
+    {
+      "requirementId": "MSR-082-83D62B3FFC",
+      "reviewedAt": "2026-09-25",
+      "summary": "Tenants share one PostgreSQL database and schema; every tenant table carries tenant_id with enabled and forced row-level security bound to the transaction-local app.tenant_id, and the application connects as a NOBYPASSRLS role. Provisioning creates a tenant inside that shared model atomically. The release gate audits the catalog and attacks every table from tenant A and tenant B. Scope: every future table is covered automatically because the gate reads the catalog.",
+      "code": [
+        "tests/integration/support/tenant-isolation.ts",
+        "tests/integration/tenant-isolation.test.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+        "platform/tenant-context/src/context.ts",
+        "platform/tenant-context/src/job.ts",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "requirementId": "MSR-082-A110A8A3AA",
+      "reviewedAt": "2026-09-25",
+      "summary": "Isolation is enforced twice: in the application (tenant derived only from the authenticated principal, AsyncLocalStorage context, repository guards that refuse another tenant's ID, tenant-scoped cache keys, tenant-stamped events) and in PostgreSQL (forced RLS, least-privilege grants, no bypass roles, views or SECURITY DEFINER functions). The CI release gate fails if either the catalog audit or the A/B attack matrix finds a gap.",
+      "code": [
+        "tests/integration/support/tenant-isolation.ts",
+        "tests/integration/tenant-isolation.test.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+        "platform/tenant-context/src/context.ts",
+        "platform/tenant-context/src/job.ts",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "requirementId": "MSR-082-8E4D03300F",
+      "reviewedAt": "2026-09-25",
+      "summary": "Every table except migration bookkeeping has a NOT NULL tenant_id, a key that includes it, and a tenant-bound RLS policy; the catalog audit fails the build otherwise. Access paths (HTTP ingress, commands, scheduled jobs via runTenantJob, outbox consumers) bind the tenant from trusted context, and a transaction without a bound tenant sees and writes nothing.",
+      "code": [
+        "tests/integration/support/tenant-isolation.ts",
+        "tests/integration/tenant-isolation.test.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+        "platform/tenant-context/src/context.ts",
+        "platform/tenant-context/src/job.ts",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "requirementId": "MSR-100-2B6E40A9E3",
+      "reviewedAt": "2026-09-25",
+      "summary": "The tenant-isolation gate attacks every table as the application and dispatcher roles: reads, inserts, updates, re-tenanting and deletes against another tenant, and every operation with no tenant bound, with positive controls; all are refused. An injected regression (a leaking policy, unforced RLS, an unprotected table, an extra grant, a BYPASSRLS role) is shown to fail the gate. The dispatcher's cross-tenant access is limited to the reviewed relay tables. Scope: holds for all data stored today and for each future table through the catalog-driven gate.",
+      "code": [
+        "tests/integration/support/tenant-isolation.ts",
+        "tests/integration/tenant-isolation.test.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+        "platform/tenant-context/src/context.ts",
+        "platform/tenant-context/src/job.ts",
+        ".github/workflows/ci.yml"
+      ]
     }
   ]
 }

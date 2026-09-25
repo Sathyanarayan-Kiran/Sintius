@@ -8,7 +8,7 @@ const tenantA = tenantId("tenant_A");
 const tenantB = tenantId("tenant_B");
 const principal = testPrincipal([tenantA]);
 
-test("resolves and propagates immutable trusted context across async work", async () => {
+test("TC-001-01-01 resolves and propagates immutable trusted context across async work", async () => {
   const context = resolveTenantContext({ principal, selectedTenantId: tenantA, tenantState: "ACTIVE", correlationId: "corr_1" });
   await runWithTenantContext(context, async () => {
     await Promise.resolve();
@@ -18,14 +18,14 @@ test("resolves and propagates immutable trusted context across async work", asyn
   });
 });
 
-test("denies a selected tenant absent from verified memberships", () => {
+test("TC-001-01-02 denies a selected tenant absent from verified memberships", () => {
   assert.throws(
     () => resolveTenantContext({ principal, selectedTenantId: tenantB, tenantState: "ACTIVE", correlationId: "corr_2" }),
     (error: unknown) => error instanceof PlatformProblem && error.problem.code === "tenant_access_denied",
   );
 });
 
-test("rejects tenant identity supplied by an untrusted request body", () => {
+test("TC-001-01-02 rejects tenant identity supplied by an untrusted request body", () => {
   assert.throws(
     () => resolveTenantContext({ principal, selectedTenantId: tenantA, tenantState: "ACTIVE", correlationId: "corr_3", bodyTenantId: tenantA }),
     (error: unknown) => error instanceof PlatformProblem && error.problem.code === "untrusted_tenant_context",
