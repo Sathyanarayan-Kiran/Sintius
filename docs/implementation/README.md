@@ -9,7 +9,7 @@ Implementation is governed by [`docs/HANDOVER_PROMPT_IMPLEMENTATION.md`](../HAND
 | Step Zero | Complete from the local snapshot; runtime decision recorded locally with a live-artifact sync note | [Decision Ledger](../decision-ledger.html) |
 | SPIKE-01 Backend runtime | Complete; Product Owner selected TypeScript on Node.js 24 LTS | [Runtime selection proposal](spikes/SPIKE-01/runtime-selection-proposal.md) |
 | Phase 0 backlog decomposition | Complete | [Implementation-ready stories](phase-0-backlog.md) |
-| Phase 0 repository/application scaffolding | In progress; first tenant-context and tenant-lifecycle slice implemented | [Repository README](../../README.md) |
+| Phase 0 repository/application scaffolding | Exit package implemented (PR 5); pipeline controls, a runnable preview and a durable specification-test-status overlay are in place, awaiting Product Owner confirmation of proposed deferrals | [Repository README](../../README.md), [Phase 0 backlog](phase-0-backlog.md) |
 | Open decisions | Options and recommendations awaiting Product Owner confirmation | [Decision proposals](decision-proposals.md) |
 
 ## Live implementation tracking

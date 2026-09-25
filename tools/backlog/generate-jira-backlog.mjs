@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
+import { loadSpecificationTestStatus } from "../requirements/specification-test-status.ts";
 
 const root = resolve(import.meta.dirname, "../..");
 const implementationDir = resolve(root, "docs/implementation");
@@ -171,6 +172,16 @@ for (const [key, requirements] of pendingBySection) {
       sourceSection: sectionNumber
     });
   }
+}
+
+// Specification-derived tests are regenerated fresh every run and would otherwise always read
+// not_run; the durable, reviewed overlay (docs/implementation/specification-test-status.json) is
+// the only source that can move one to passing, and only when a real automated test proves it.
+const generatedTestIds = new Set(generatedStories.flatMap((story) => story.tests.map((test) => test.id)));
+const specificationTestStatus = loadSpecificationTestStatus(root, generatedTestIds);
+for (const story of generatedStories) for (const test of story.tests) {
+  const overlaid = specificationTestStatus.get(test.id);
+  if (overlaid !== undefined) test.status = overlaid;
 }
 
 const generatedStoryById = new Map(generatedStories.map((story) => [story.id, story]));

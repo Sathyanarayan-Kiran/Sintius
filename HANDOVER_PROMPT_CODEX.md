@@ -2,7 +2,7 @@
 
 Copy everything below the divider into Codex. Set the working directory to the repository root (the folder that contains `package.json`).
 
-State as of 2026-09-25, `master` at the merge of PR #8. PRs #1–#8 are merged.
+State as of 2026-09-25, `master` at the merge of PR #10. PRs #1–#10 are merged, and PR 5 (the Phase 0 exit package, section 6) is implemented and awaiting the Product Owner's merge decision.
 
 ---
 
@@ -13,7 +13,7 @@ You are continuing implementation of the **Sintius AI-native Subscription and Re
 - run the full gate before you report;
 - report only what you actually proved.
 
-Phase 0 (the platform foundation) is close to exit. Most of what remains is listed in section 6, and two items need the Product Owner.
+Phase 0 (the platform foundation) has its exit package implemented (section 6, PR 5). What remains is Product Owner confirmation of the proposed deferrals in section 5 and the merge decision; the identity-provider product choice does not block Phase 0.
 
 ## 1. Read first (in this order)
 
@@ -46,7 +46,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
   - "Backlog traceability: complete";
   - "Implementation coverage: incomplete (N of 1,335 with evidence)";
   - "Automated execution: only what actually ran".
-- **A mapped requirement is not an implemented one.** Implementation evidence lives in `docs/implementation/implementation-evidence.json`; it stood at **16 of 1,335** at handover. Claim a requirement only when all of these hold:
+- **A mapped requirement is not an implemented one.** Implementation evidence lives in `docs/implementation/implementation-evidence.json`; it stood at **18 of 1,335** at handover (up from 16: MSR-080-3B6F4B3FE4 OIDC/OAuth2 and MSR-080-477F636C27 MFA, each demonstrated by its own directly titled test via the new `docs/implementation/specification-test-status.json` overlay — SAML, MSR-080-A555453F8D, is not claimed). Claim a requirement only when all of these hold:
   - every test mapped to it is `passing` in the roadmap data;
   - each of those tests exists as an automated test whose title contains its TC ID;
   - each of those tests passed in the CI run.
@@ -123,7 +123,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 - `npm run test:postgres` runs the PostgreSQL suite. Its files are listed explicitly in `tools/test/run-suite.mjs` and run one at a time, because they share a database. Add each new database test file there.
 - `npm run check` runs the whole local gate: typecheck, architecture, roadmap, requirement coverage, unit tests and the PostgreSQL suite.
 - `npm run check:evidence` re-verifies evidence claims against the TAP reports. To run it locally, first run the suites with `SINTIUS_TEST_REPORT_DIR=reports`.
-- **Baseline at handover:** 177 unit and 39 PostgreSQL tests, all passing (216 in total). Run `npm run check` before editing and confirm this baseline.
+- **Baseline at handover:** 184 unit and 39 PostgreSQL tests, all passing (223 in total). Run `npm run check` before editing and confirm this baseline. `npm run check:evidence` and `npm run check:pipeline-controls` (both CI-only, requiring `SINTIUS_TEST_REPORT_DIR`) additionally re-verify implementation evidence and the Definition of Done / test strategy gates against the run's TAP reports.
 
 **CI**
 
@@ -242,6 +242,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
   - `X-Active-Tenant` to choose among a user's signed memberships.
 - Routes are `config: { platform: true }` (platform-operator credentials only) or tenant routes; the two never accept each other's credentials.
 - Composition root: `src/composition/postgres.ts`.
+- `src/main.ts` (`npm start`): the runnable entry point. Uses `remoteKeySet` against a configured JWKS URL when `SINTIUS_TENANT_JWKS_URL`/`SINTIUS_PLATFORM_JWKS_URL` are set, else falls back to `src/local-development/identity.ts` — a fresh, in-memory, clearly labelled LOCAL DEVELOPMENT ONLY key set, never imported when a real provider is configured. `src/local-development/exit-demonstration.ts` (`npm run demo:exit`) runs the Phase 0 exit scenario against a migrated database using the same composition root.
 
 **Tenant-isolation release gate** (`tests/integration/tenant-isolation.test.ts`, support in `tests/integration/support/tenant-isolation.ts`)
 - It reads the live database catalog, so new tables are covered automatically.
@@ -254,57 +255,46 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 
 **Phase 0 stories**
 
-| Story | Progress | Tests | Remaining |
-|---|---|---|---|
-| US-BL-001-01 tenant context | 98 | 3/3 passing | A Redis adapter only when multi-instance coherence is needed |
-| US-BL-001-02 idempotency | 92 | 3/3 passing | Deterministic failed-final responses, retention source and cleanup job |
-| US-BL-001-03 outbox | 90 | 2/2 passing | Continuous runtime loop with lease renewal, schema validation, gap detection, retention |
-| US-BL-001-04 RLS | 90 | 2/2 passing | Alerting on RLS and missing-context denials |
-| US-BL-001-05 problems and trace | 95 | 2/2 passing | UI copy (deferred to the first UI story, D16) |
-| US-BL-002-01 tenant lifecycle | 98 | 3/3 passing | None for Phase 0 |
-| US-BL-002-02 administrator authentication | 90 | 2/2 passing | IdP product choice, revocation feed or command, admin-web login flow |
-| US-BL-002-03 RBAC and maker-checker | 88 | 2/2 passing | Approval expiry sweeper, ApprovalPolicy management commands, ingress routes (proposed for Phase 1) |
-| US-BL-002-04 workload identity | 85 | 2/2 passing | Issuance and rotation at the IdP, mTLS later |
-| US-BL-017-01 audit | 75 | 2/2 passing | PostgreSQL audit reader and `audit:read` route, hash-chain decision, retention |
-| US-BL-017-03 release blocking on isolation | 85 | 2/2 passing | Run against deployed roles once an environment exists |
-| US-MSR-103-DOD Definition of Done | 0 | 0/2 | Pipeline control (PR 5) |
-| US-MSR-099-TEST-STRATEGY | 0 | 0/2 | Pipeline control (PR 5) |
+| Story | Status | Progress | Tests | Remaining |
+|---|---|---|---|---|
+| US-BL-001-01 tenant context | **implemented** | 100 | 3/3 passing | A Redis adapter only when multi-instance coherence is needed (optional) |
+| US-BL-001-02 idempotency | in_progress | 92 | 3/3 passing | Deterministic failed-final responses, retention source and cleanup job (proposed deferral to Phase 6) |
+| US-BL-001-03 outbox | in_progress | 90 | 2/2 passing | Continuous runtime loop with lease renewal, schema validation, gap detection, retention (proposed deferral to Phase 1) |
+| US-BL-001-04 RLS | in_progress | 90 | 2/2 passing | Alerting on RLS and missing-context denials (proposed new deferral to Phase 6, not yet in the list below — needs PO confirmation) |
+| US-BL-001-05 problems and trace | **implemented** | 100 | 2/2 passing | UI copy (deferred to the first UI story, D16) |
+| US-BL-002-01 tenant lifecycle | **implemented** | 100 | 3/3 passing | None for Phase 0. TC-002-01-01/02 were claimed `passing` with no test titled with their ID until PR 5 retitled `modules/identity-tenant/tests/tenant.test.ts`'s two domain tests to close the gap the new US-MSR-103-DOD gate found. |
+| US-BL-002-02 administrator authentication | in_progress | 90 | 2/2 passing | IdP product choice, revocation feed or command, admin-web login flow |
+| US-BL-002-03 RBAC and maker-checker | in_progress | 88 | 2/2 passing | Approval expiry sweeper, ApprovalPolicy management commands, ingress routes (proposed deferral to Phase 1) |
+| US-BL-002-04 workload identity | in_progress | 85 | 2/2 passing | Issuance and rotation at the IdP, mTLS later |
+| US-BL-017-01 audit | in_progress | 75 | 2/2 passing | PostgreSQL audit reader and `audit:read` route, hash-chain decision, retention (proposed deferral: reader to Phase 1, hash-chain/retention to Phase 6) |
+| US-BL-017-03 release blocking on isolation | in_progress | 85 | 2/2 passing | Run against deployed roles once an environment exists |
+| US-MSR-103-DOD Definition of Done | **implemented** | 100 | 2/2 passing | None for Phase 0 — `check-pipeline-controls.mjs` (PR 5) |
+| US-MSR-099-TEST-STRATEGY | **implemented** | 100 | 2/2 passing | None for Phase 0 — `check-pipeline-controls.mjs` (PR 5) |
 
-**Requirements not yet claimable**
+**Requirements claimable as of PR 5**
 
-- The identity requirements `MSR-080-3B6F4B3FE4` (OIDC/OAuth2) and `MSR-080-477F636C27` (MFA) are demonstrated by code and tests.
-- They cannot be claimed yet, because they map to specification-derived stories (US-MSR-080-01) whose test IDs have no status in the roadmap data. `tools/requirements/implementation-evidence.mjs` reads statuses only from the 103 canonical stories.
-- `MSR-080-A555453F8D` (SAML SSO) is federated through the IdP and is not demonstrable in-repo. Do not claim it.
+- `MSR-058-C69192855F`, `MSR-058-2CCE1DD0DC`, `MSR-100-D1A3F8F46A`, `MSR-060-D685CE4383` and 12 others predate PR 5 (16 total).
+- `MSR-080-3B6F4B3FE4` (OIDC/OAuth2) and `MSR-080-477F636C27` (MFA) are new in PR 5: each is demonstrated by its own directly titled test (`TC-MSR-080-3B6F4B3FE4`, `TC-MSR-080-477F636C27` in `modules/identity-tenant/tests/jwt-authentication.test.ts`), claimed honestly through `docs/implementation/specification-test-status.json` (`tools/requirements/specification-test-status.ts`), which `tools/requirements/implementation-evidence.ts` now merges into its roadmap-test-status lookup so specification-derived tests (not only the 103 canonical stories) can carry evidence. **18 of 1,335** total.
+- `MSR-080-A555453F8D` (SAML SSO) is federated through the IdP and is not demonstrable in-repo. It is not claimed and its overlay status stays `not_run`.
 
 ## 5. Open items and choices awaiting the Product Owner
 
 1. **D9 persona matrix.** Done: reviewed by the PO on 2026-09-25 (`docs/implementation/persona-permission-matrix.md`).
 2. **Identity-provider product.** Candidates are Entra ID, Okta, Auth0, Cognito or Keycloak. It must support OIDC, MFA (emitting `amr` = `mfa`), SAML federation and client credentials. This does not block Phase 0.
-3. **Proposed Phase 0 deferrals, not yet explicitly confirmed:**
-   - to Phase 1: the continuous dispatcher runtime, the approval expiry sweeper and policy commands, and the PostgreSQL audit reader;
-   - to Phase 6: retention and cleanup jobs, Redis, audit hash-chaining, and the move to Kafka.
+3. **Proposed Phase 0 deferrals, not yet explicitly confirmed — PR 5 asks the PO to confirm all of these before the stories they attach to can be marked `implemented`:**
+   - to Phase 1: the continuous dispatcher runtime (US-BL-001-03), the approval expiry sweeper and policy commands (US-BL-002-03), and the PostgreSQL audit reader (US-BL-017-01);
+   - to Phase 6: retention and cleanup jobs including idempotency's deterministic failed-final responses (US-BL-001-02), Redis, audit hash-chaining and retention (US-BL-017-01), the move to Kafka, and — **new in PR 5** — alerting on RLS and missing-database-context denials (US-BL-001-04), which was implemented but never explicitly placed in a deferral bucket;
+   - US-BL-002-02 (IdP product choice, a revocation feed or command, and the admin-web login flow) and US-BL-002-04 (credential issuance/rotation at the IdP, mTLS) both wait on the identity-provider product choice (item 2) rather than a Phase target; propose deferring their remaining scope to whichever phase follows that choice.
 4. **Outbox sequence grant.** `sintius_app` holds `SELECT, USAGE` on `outbox_event_entry_id_seq` (from migration 005), which it does not need. It is recorded in the privilege manifest for now; revoking it takes a one-line migration if the PO agrees.
 5. **D7 (UUIDv7 primary keys).** Accepted, not yet implemented. It is cheapest before Phase 1 adds billing tables, so do it right after Phase 0 exit.
 
-## 6. What to do next (the Phase 0 exit plan; PRs 1–4 are done)
-
-Work in order, one PR each, and stop to report after each.
+## 6. What to do next (the Phase 0 exit plan; PRs 1–5 are done)
 
 **PR 4 (done): D9 persona permission matrix.** See `modules/identity-tenant/domain/persona-matrix.ts` and `docs/implementation/persona-permission-matrix.md`. When a later story adds a permission, add its persona grants there with a basis and sources, regenerate the document table from `renderPersonaMatrix()`, and get the Product Owner's decision on anything inferred or proposed.
 
-**PR 5: exit package**
+**PR 5 (done): exit package.** `tools/requirements/story-dod.ts` and `tools/requirements/test-strategy.ts` are the US-MSR-103-DOD and US-MSR-099-TEST-STRATEGY pipeline controls, run in CI by `npm run check:pipeline-controls` (`check-pipeline-controls.mjs`) against this run's TAP reports, the same way `check:evidence` verifies implementation evidence. `docs/implementation/specification-test-status.json` is the durable status overlay for specification-derived test IDs. `npm start` (`apps/api/src/main.ts`) composes the API on PostgreSQL with a configured identity provider or a clearly labelled local-development-only key set (`apps/api/src/local-development/identity.ts`); `npm run demo:exit` (`apps/api/src/local-development/exit-demonstration.ts`) runs the scripted exit demonstration. `docs/implementation/golden/money-proration-allocation.json` and `platform/money/tests/golden-dataset.test.ts` are the golden-dataset determinism/provenance check. Five stories were marked `implemented` (US-BL-001-01, US-BL-001-05, US-BL-002-01, US-MSR-103-DOD, US-MSR-099-TEST-STRATEGY); the rest have proposed, not-yet-confirmed deferrals per section 5 item 3.
 
-1. **Pipeline controls.**
-   - US-MSR-103-DOD: the pipeline rejects a story marked `implemented` unless all of its tests are `passing` and passed in CI. Extend `tools/requirements/check-evidence.mjs` or add a sibling check.
-   - US-MSR-099-TEST-STRATEGY: require each applicable suite class to be present, and add a golden-dataset determinism check (for example over `platform/money` proration and allocation).
-   - Title the tests with their TC IDs.
-2. **Status for specification-derived tests.** Add a durable status overlay for their test IDs, in the roadmap data or a new input file validated by the generator, so requirements such as MSR-080 OIDC and MFA can be claimed honestly.
-3. **Runnable preview.**
-   - Add an `npm start` entry point composing the API on PostgreSQL. Use `jose` with a configured JWKS URL, or a clearly labelled local-development key set.
-   - Add a scripted exit demonstration: provision a tenant as a platform operator, sign in, run a command twice with one idempotency key, show exactly one record, audit event and outbox event, and show tenant B seeing nothing.
-4. **Close the phase.** Mark each Phase 0 story `implemented` only where every test is passing and nothing Phase-0-scoped remains. Write a short exit report for the Product Owner.
-
-**After Phase 0:** D7 UUIDv7 migration, then Phase 1 billing domains, per `docs/pre-implementation/21-technical-implementation-plan.md`.
+**After Phase 0 (needs the Product Owner's confirmation of section 5 item 3 first):** D7 UUIDv7 migration, then Phase 1 billing domains, per `docs/pre-implementation/21-technical-implementation-plan.md`.
 
 ## 7. Definition of done for any tranche
 

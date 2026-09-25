@@ -59,6 +59,8 @@ jobs:
         run: npm run test:postgres
       - name: Verify implementation evidence against this run
         run: npm run check:evidence
+      - name: Verify Definition of Done and test strategy gates against this run
+        run: npm run check:pipeline-controls
       - name: Upload release-gate evidence
         if: always()
         uses: actions/upload-artifact@v7

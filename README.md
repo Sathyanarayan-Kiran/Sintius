@@ -18,22 +18,32 @@ This repository is the TypeScript/Node.js 24 LTS implementation of the canonical
 - Persona permission matrix (decision D9, reviewed by the Product Owner on 2026-09-25): `modules/identity-tenant/domain/persona-matrix.ts` maps the 12 personas of master spec §61 to the permission catalog, citing a source or a PO decision for each grant; `docs/implementation/persona-permission-matrix.md` is rendered from it. Role-scoped limits (`tenant_role.permission_limits`) narrow only their own role, for example the Billing Administrator refunding up to USD 10,000. Every new tenant receives a default pricing-activation approval policy (Product + Finance).
 - Fastify HTTP ingress (`apps/api`): bearer authentication through the provider-neutral authentication service, tenant derived only from the principal (`X-Active-Tenant` selects among signed memberships), `X-Correlation-Id`/`X-Causation-Id` propagation into context, audit and events, `Idempotency-Key`, `If-Match`/`ETag`, `Retry-After`, strict body schemas and RFC 9457 problem+json for every failure. Routes: tenant provisioning/lifecycle and the test-only proof command. A PostgreSQL HTTP test proves one ingress correlation ID reaches the record, the audit row and the published event.
 - `platform/money`: the SPIKE-02 money foundation, proven by hand-computed golden cases (USD/INR, JPY, KWD) and seeded property suites cross-checked against an independent decimal oracle.
-- Implementation evidence: `docs/implementation/implementation-evidence.json` records which accepted requirements are implemented. A claim is accepted only if every mapped test is marked passing, exists as an automated test, and (in CI) passed in that run.
+- Implementation evidence: `docs/implementation/implementation-evidence.json` records which accepted requirements are implemented. A claim is accepted only if every mapped test is marked passing, exists as an automated test, and (in CI) passed in that run. `docs/implementation/specification-test-status.json` is the same idea for specification-derived tests (`US-MSR-<section>-<seq>` stories, regenerated fresh every run): a durable, reviewed `passing` status for a test ID requires a real automated test titled with that exact ID.
+- Pipeline controls (US-MSR-103-DOD, US-MSR-099-TEST-STRATEGY): `tools/requirements/story-dod.ts` rejects a story marked `implemented` unless every one of its tests is passing, automated and (in CI) actually passed, and requires a financially material story to show reconciliation evidence or a reviewed rationale for why none applies. `tools/requirements/test-strategy.ts` requires every quality-suite class from `docs/pre-implementation/24-testing-strategy.md` §16 to be either applicable now with real evidence, or explicitly marked not-yet-applicable with a reviewed reason. Both run in CI via `npm run check:pipeline-controls`. The golden-dataset determinism class is proven by `docs/implementation/golden/money-proration-allocation.json` and `platform/money/tests/golden-dataset.test.ts`.
 - CI (decision D13): `.github/workflows/ci.yml` runs the full gate on Node 24 with a PostgreSQL 17 service and uploads TAP reports and requirement coverage as release-gate evidence.
 - Observability (decision D15): `platform/observability` is the only OpenTelemetry surface for application code. It provides PII-safe spans with shape-checked, redacted attributes, W3C trace context stored beside outbox entries and deliveries, and the Phase 0 metrics (problems by code, idempotency outcomes, queue outcomes and gauges, audit write failures). One trace runs from the HTTP request through the command, audit, dispatch, delivery and consumer. `npm run observability:up` starts a local Grafana stack (OTLP on 127.0.0.1:4318, Grafana on 127.0.0.1:3000).
 - Architecture manifest validation for bounded-context ownership.
 
 Node 24's native erasable-TypeScript support runs the code and tests directly; there is no build step. `npm run typecheck` runs the pinned TypeScript compiler (`tsc --noEmit`, strict) and is the first step of `npm run check`. Runtime dependencies are pinned: `pg` for PostgreSQL and `fastify` for HTTP.
 
+## Running it
+
+`npm start` composes the API on PostgreSQL (`apps/api/src/main.ts`). Set `SINTIUS_TENANT_JWKS_URL`/`SINTIUS_TENANT_ISSUER` and `SINTIUS_PLATFORM_JWKS_URL`/`SINTIUS_PLATFORM_ISSUER` to verify against a real, configured identity provider; leave them unset and it falls back to a clearly labelled, in-memory, local-development-only key set generated fresh on every boot (never a production credential), and prints an example bearer token and `curl` command to stdout.
+
+`npm run demo:exit` runs the Phase 0 exit scenario end to end against a migrated database: a platform operator provisions and activates two tenants, a user in tenant A runs one command twice with one idempotency key, and the script prints exactly one record, one audit event and one outbox event for tenant A and none of that command's evidence for tenant B. It is safe to re-run.
+
 ## Commands
 
 ```powershell
 npm.cmd run typecheck
 npm.cmd test
-npm.cmd run check:evidence   # CI: re-verifies implementation evidence against test reports
+npm.cmd run check:evidence            # CI: re-verifies implementation evidence against test reports
+npm.cmd run check:pipeline-controls   # CI: re-verifies the Definition of Done and test strategy gates
 npm.cmd run check:postgres
 npm.cmd run check:architecture
 npm.cmd run check
+npm.cmd start
+npm.cmd run demo:exit
 ```
 
 `check:postgres` starts the local PostgreSQL 17 container on `127.0.0.1:54329`, applies forward-only migrations (from `modules/*` and `platform/*`) and runs the database integration suite (`test:postgres`, one file at a time because the files share one database). The Compose configuration uses trust authentication only for loopback-bound local development; it is not a production credential model. Use `npm.cmd run db:down` to stop the container while retaining its named development volume.

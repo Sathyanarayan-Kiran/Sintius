@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-24T13:03:50.241Z",
+  "generatedAt": "2026-09-24T13:03:50.486Z",
   "source": {
     "file": "AI_Native_Subscription_Revenue_Platform_Master_Product_Specification.md",
     "sha256": "0a8a831501a99fa5e75c567cd3d0f059c5752b33fface2683cb23bd6292f4a44",
@@ -29,8 +29,8 @@
           "backlog": [
             "BL-001-01"
           ],
-          "implementation": "in_progress",
-          "progress": 98,
+          "implementation": "implemented",
+          "progress": 100,
           "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping are implemented. The PostgreSQL transaction adapter sets a transaction-local tenant, applies mandatory repository filters and is protected by forced RLS. The Fastify ingress derives the tenant only from the authenticated principal (single membership, or X-Active-Tenant choosing among signed memberships), rejects a tenant_id in tenant-scoped bodies before any lookup, checks membership before reading tenant state, and runs the handler inside the resolved context; outbox consumers bind the delivered event's tenant. An in-process InMemoryKeyValueStore (decision D16: size-bounded LRU with TTL and clone-on-read/write) now backs TenantScopedCache, and tests prove tenant A/B separation, expiry, eviction and value isolation through it, so TC-001-01-03 is passing: the trusted tenant reaches the PostgreSQL transaction, the cache and the event envelope. Worker context: runTenantJob establishes the same trusted context for scheduled work: it starts only at the root, requires a workload credential bound to exactly one active tenant, derives the correlation ID from the job run, and tests prove concurrent per-tenant runs stay separate and that a job's PostgreSQL transactions are bound to its own tenant. Remaining: a Redis adapter only when multi-instance cache coherence is needed.",
           "acceptance": [
             "Given verified membership in tenant A, when a request enters the application, tenant A is propagated through asynchronous work without accepting a body override.",
@@ -359,8 +359,8 @@
           "backlog": [
             "BL-001-05"
           ],
-          "implementation": "in_progress",
-          "progress": 95,
+          "implementation": "implemented",
+          "progress": 100,
           "notes": "Cataloged problem registry enforced at construction, validated trace IDs, transport-neutral boundary mapper (known problems allow-listed; unexpected errors become a sanitized 500 with redacted internal evidence) and golden/security tests implemented. The Fastify ingress (apps/api) generates or validates X-Correlation-Id, uses it as the request and log ID, echoes it on every response, carries X-Correlation-Id/X-Causation-Id into the tenant or platform context and from there into audit rows and event envelopes, and renders every failure (schema, JSON, media type, size, 404, unexpected) as application/problem+json with Retry-After for in-flight duplicates. HTTP and PostgreSQL tests prove one ingress correlation ID reaches the record, audit row and published envelope. Remaining: none for Phase 0 beyond the deferred UI copy. Decision D15: every request is an OpenTelemetry server span named by its route template, problem responses increment sintius.http.problems by stable code and status, and a test proves credentials and secrets never reach exported telemetry. UI code-to-copy mapping is deferred to the first UI story by decision D16.",
           "acceptance": [
             "Every expected failure returns RFC-7807-compatible data with a stable code and correlation ID.",
@@ -411,9 +411,9 @@
           "backlog": [
             "US-MSR-103-DOD"
           ],
-          "implementation": "not_started",
-          "progress": 0,
-          "notes": "Cross-cutting control story created from master specification §103.",
+          "implementation": "implemented",
+          "progress": 100,
+          "notes": "tools/requirements/story-dod.mjs is a pipeline control, not a checklist: check-pipeline-controls.mjs runs it in the CI release gate, after the unit and PostgreSQL suites, against this run's TAP reports. It rejects a story marked implemented unless every one of its tests is passing in the roadmap source, exists as an automated test titled with its ID and actually passed in this run (TC-US-MSR-103-DOD-01), and requires a financially material story (pricing, billing, receivables, payments, collections, revenue, audit/finance) to carry a passing reconciliation-typed test or an explicit, reviewed reconciliationRationale before it can be marked implemented (TC-US-MSR-103-DOD-02). Proven by unit tests over a fixture roadmap: the guard fires for a not-passing test, an unautomated test, a test that failed in this run's reports, an empty test list and a financial story without reconciliation evidence, and stays silent for a genuinely complete story.",
           "acceptance": [
             "A story cannot be marked implemented without applicable domain, API, UI, authorization, audit, error, accessibility, observability, test and documentation evidence.",
             "Financial stories additionally require passing reconciliation evidence; any non-applicable item requires an explicit reviewed rationale.",
@@ -436,13 +436,13 @@
               "id": "TC-US-MSR-103-DOD-01",
               "name": "Pipeline rejects a completed story with missing required evidence",
               "type": "pipeline",
-              "status": "not_run"
+              "status": "passing"
             },
             {
               "id": "TC-US-MSR-103-DOD-02",
               "name": "Financial story completion requires reconciliation evidence",
               "type": "reconciliation",
-              "status": "not_run"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E001",
@@ -620,9 +620,9 @@
           "backlog": [
             "US-MSR-099-TEST-STRATEGY"
           ],
-          "implementation": "not_started",
-          "progress": 0,
-          "notes": "Cross-cutting control story created from master specification §99.",
+          "implementation": "implemented",
+          "progress": 100,
+          "notes": "tools/requirements/test-strategy.mjs declares every quality-suite class from docs/pre-implementation/24-testing-strategy.md §16 (SUITE_CLASSES) as either applicable now with real, automated, passing evidence, or not yet applicable with a reviewed rationale — no pricing, rating, billing, payments, collections, revenue or UI module exists yet, so those classes are exempt with a stated reason rather than silently missing. check-pipeline-controls.mjs runs it in the CI release gate against this run's TAP reports (TC-US-MSR-099-TEST-STRATEGY-01). The golden-dataset class is proven by docs/implementation/golden/money-proration-allocation.json and platform/money/tests/golden-dataset.test.ts (TC-PLATFORM-MONEY-GOLDEN-01, master specification §5/§99: deterministic golden datasets for financial calculations): it recomputes every proration and largest-remainder-allocation fixture from the real platform/money functions, checks the output against the stored expected value and a recomputed content hash of the fixture (so a hand-edited expected value with a stale hash is caught), checks the whole dataset's provenance hash, and runs every fixture twice to prove determinism (TC-US-MSR-099-TEST-STRATEGY-02); mutation-tested by editing an expected value without its hash, which fails the test.",
           "acceptance": [
             "CI defines release gates for unit, integration, contract, payment simulation, billing golden, pricing property, load, failover, security and financial reconciliation suites.",
             "Every financial calculation suite uses deterministic, versioned golden datasets and publishes reproducible evidence.",
@@ -643,13 +643,13 @@
               "id": "TC-US-MSR-099-TEST-STRATEGY-01",
               "name": "Pipeline requires every applicable quality-suite class",
               "type": "pipeline",
-              "status": "not_run"
+              "status": "passing"
             },
             {
               "id": "TC-US-MSR-099-TEST-STRATEGY-02",
               "name": "Golden-dataset determinism and provenance check",
               "type": "golden",
-              "status": "not_run"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E001",
@@ -10135,8 +10135,8 @@
           "backlog": [
             "BL-002-01"
           ],
-          "implementation": "in_progress",
-          "progress": 98,
+          "implementation": "implemented",
+          "progress": 100,
           "notes": "Aggregate and application handlers (provision, activate, suspend, reactivate, close) use the real PostgreSQL adapter and execute through trusted platform-scoped idempotency. Fastify routes (POST /v1/platform/tenants and /{id}/activate|suspend|reactivate|close) require If-Match, return ETag/Location and map a stale version to 412; an HTTP test provisions and activates tenants on PostgreSQL. Tests prove atomic tenant/default-role/administrator/audit/outbox/result commit, replay without repeated effects, authorization before replay lookup, full rollback and database compare-and-set under a concurrent lifecycle race. Decision D11: platform routes accept only platform-operator credentials (the sintius-platform audience, no tenant memberships, MFA always) and createPlatformAuthorizer allows a command only for such an operator holding the permission through a reviewed platform role (platform_tenant_provisioner, platform_tenant_lifecycle_operator); tenant users and workloads never qualify. The HTTP test on PostgreSQL provisions and activates tenants with a signed operator token under the production authorizer. Remaining: none for Phase 0.",
           "acceptance": [
             "Provisioning creates the tenant in PROVISIONING and valid commands move it only through the approved state graph.",
@@ -36663,7 +36663,7 @@
               "id": "TC-MSR-080-3B6F4B3FE4",
               "name": "Verify The platform must support OIDC/OAuth2 within security.",
               "type": "performance",
-              "status": "not_run",
+              "status": "passing",
               "requirementIds": [
                 "MSR-080-3B6F4B3FE4"
               ]
@@ -36681,7 +36681,7 @@
               "id": "TC-MSR-080-477F636C27",
               "name": "Verify The platform must support MFA within security.",
               "type": "performance",
-              "status": "not_run",
+              "status": "passing",
               "requirementIds": [
                 "MSR-080-477F636C27"
               ]

@@ -2,6 +2,8 @@
 
 Copy everything below the divider into Claude Code while its working directory is the repository root.
 
+**This document's status numbers and "next tranche" (section 8) are historical, from an earlier point in Phase 0; its rules (ground-truth precedence, generated-file rules, reporting format) are still binding.** For current status, use [`HANDOVER_PROMPT_CODEX.md`](HANDOVER_PROMPT_CODEX.md) — as of 2026-09-25, PRs #1–#10 are merged and the Phase 0 exit package (pipeline controls, a durable status overlay for specification-derived tests, `npm start`, `npm run demo:exit`) is implemented in PR 5, awaiting Product Owner confirmation of proposed deferrals and the merge decision.
+
 ---
 
 You are continuing implementation of the Sintius AI-native Subscription and Revenue Platform in the existing workspace. Work as a production implementation agent: inspect before editing, preserve traceability, implement the next safe backlog tranche, run the required gates, and leave the repository in a reproducible state.
