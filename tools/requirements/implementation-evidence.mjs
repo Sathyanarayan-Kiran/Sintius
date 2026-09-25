@@ -1,6 +1,8 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
+import { loadSpecificationTestStatus } from "./specification-test-status.ts";
+import { automatedTestIds, tapResults } from "./test-inventory.ts";
 
 /**
  * Implementation evidence overlay (docs/implementation/implementation-evidence.json).
@@ -8,52 +10,32 @@ import { runInNewContext } from "node:vm";
  * A requirement counts as implemented only when:
  * 1. it is an accepted requirement;
  * 2. a reviewer recorded an entry naming the code that implements it (every path must exist);
- * 3. EVERY test mapped to the requirement is marked `passing` in the durable roadmap source;
+ * 3. EVERY test mapped to the requirement is marked `passing`, either in the durable roadmap
+ *    source (the 103 canonical stories) or in the specification-test-status overlay (generated,
+ *    specification-derived stories such as US-MSR-080-01);
  * 4. every one of those tests exists as an automated test titled with its ID in the repository;
  * 5. when test reports are supplied (CI), every one of those tests passed in this run.
- * Editing the overlay alone can never raise the count: rules 3-5 tie it to executed tests.
+ * Editing either overlay alone can never raise the count: rules 3-5 tie it to executed tests.
  */
 export const EVIDENCE_PATH = "docs/implementation/implementation-evidence.json";
-const TEST_ID = /^TC-[A-Z0-9-]+$/;
+export { tapResults } from "./test-inventory.ts";
 
-function roadmapTestStatuses(root) {
+/** Canonical roadmap statuses merged with the reviewed specification-test-status overlay. */
+export function roadmapTestStatuses(root, options = {}) {
   const context = {};
   runInNewContext(readFileSync(resolve(root, "docs/implementation/implementation-roadmap-data.js"), "utf8"), context);
   const statuses = new Map();
   for (const epic of context.SINTIUS_ROADMAP.epics) for (const story of epic.stories) for (const test of story.tests) statuses.set(test.id, test.status);
-  return statuses;
-}
 
-function automatedTestIds(root) {
-  const ids = new Set();
-  const walk = (directory) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-      const path = resolve(directory, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith(".test.ts")) {
-        for (const match of readFileSync(path, "utf8").matchAll(/\btest\(\s*["'`]((?:TC-[A-Z0-9-]+[ ,/]*)+)/g)) {
-          for (const id of match[1].split(/[ ,/]+/)) if (TEST_ID.test(id)) ids.add(id);
-        }
-      }
-    }
-  };
-  for (const layer of ["apps", "modules", "platform", "tests"]) if (existsSync(resolve(root, layer))) walk(resolve(root, layer));
-  return ids;
-}
-
-/** Parses TAP files: a test ID passes when at least one test titled with it is `ok` and none is `not ok`. */
-export function tapResults(reportDirectory) {
-  const passed = new Set();
-  const failed = new Set();
-  for (const name of readdirSync(reportDirectory).filter((file) => file.endsWith(".tap"))) {
-    for (const line of readFileSync(resolve(reportDirectory, name), "utf8").split("\n")) {
-      const match = /^\s*(not ok|ok) \d+ - ((?:TC-[A-Z0-9-]+[ ,/]*)+)/.exec(line);
-      if (match === null) continue;
-      for (const id of match[2].split(/[ ,/]+/).filter((value) => TEST_ID.test(value))) (match[1] === "ok" ? passed : failed).add(id);
-    }
+  const generatedIdsPath = resolve(root, "docs/implementation/normalized-backlog.json");
+  if (existsSync(generatedIdsPath)) {
+    const normalizedBacklog = JSON.parse(readFileSync(generatedIdsPath, "utf8"));
+    const generatedStories = normalizedBacklog.epics.flatMap((epic) => epic.stories).filter((story) => story.sourceSection !== undefined);
+    const generatedTestIds = new Set(generatedStories.flatMap((story) => story.tests.map((test) => test.id)));
+    const overlay = loadSpecificationTestStatus(root, generatedTestIds, options);
+    for (const [testId, status] of overlay) statuses.set(testId, status);
   }
-  return { passed, failed };
+  return statuses;
 }
 
 /**
@@ -65,7 +47,7 @@ export function loadImplementationEvidence(root, requirements, options = {}) {
   if (!existsSync(path)) return new Map();
   const overlay = JSON.parse(readFileSync(path, "utf8"));
   const byId = new Map(requirements.map((requirement) => [requirement.id, requirement]));
-  const statuses = roadmapTestStatuses(root);
+  const statuses = roadmapTestStatuses(root, options);
   const automated = automatedTestIds(root);
   const reports = options.reportDirectory === undefined ? undefined : tapResults(options.reportDirectory);
   const failures = [];

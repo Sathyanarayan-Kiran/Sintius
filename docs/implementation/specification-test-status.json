@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "policy": "Editable source. Specification-derived tests (US-MSR-<section>-<seq> stories, generated fresh by tools/backlog/generate-jira-backlog.mjs on every run) always start not_run: nothing about a generated test's status is durable on its own. A status here counts only when it is passing, not_run, partial or blocked, the entry carries a reviewed summary and date, and (for passing) an automated test is titled with the exact TC ID and, in CI, actually passed in that run. Validated by tools/requirements/specification-test-status.mjs on every generation and, in CI, against the run's TAP reports.",
+  "statuses": [
+    {
+      "testId": "TC-MSR-080-3B6F4B3FE4",
+      "status": "passing",
+      "reviewedAt": "2026-09-25",
+      "summary": "OIDC/OAuth2: createJwtCredentialVerifier (jose) verifies the bearer token's signature against the provider's published keys and createAuthenticator maps it to an interactive principal; a token not signed by the provider's key is refused. Demonstrated directly, not inferred from a broader test.",
+      "code": [
+        "modules/identity-tenant/infrastructure/jose/jwt-verifier.ts",
+        "modules/identity-tenant/application/authentication.ts"
+      ]
+    },
+    {
+      "testId": "TC-MSR-080-477F636C27",
+      "status": "passing",
+      "reviewedAt": "2026-09-25",
+      "summary": "MFA: a session receives mfa assurance only when the token's amr claim carries mfa, and the provider policy's requireMfa refuses a single-factor (pwd-only) credential with authentication_assurance_insufficient. Demonstrated directly, not inferred from a broader test.",
+      "code": [
+        "modules/identity-tenant/application/authentication.ts"
+      ]
+    }
+  ]
+}

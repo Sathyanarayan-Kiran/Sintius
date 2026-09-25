@@ -1,0 +1,305 @@
+{
+  "version": 1,
+  "policy": "US-MSR-099-TEST-STRATEGY / master specification §99 and §5 of docs/pre-implementation/24-testing-strategy.md: financial calculations use deterministic, versioned golden datasets; a diff in output for an unchanged input/engine-version combination is always a defect, never expected drift. platform/money/tests/golden-dataset.test.ts recomputes every fixture below on each run and fails on any output or content-hash mismatch.",
+  "engineVersion": "platform/money@1",
+  "proration": [
+    {
+      "id": "proration-28-day-february",
+      "description": "Full 28-day February period, ACTUAL_DAYS (D6)",
+      "amount": {
+        "value": "28.00",
+        "currency": "USD"
+      },
+      "used": {
+        "start": "2027-02-01",
+        "end": "2027-03-01"
+      },
+      "period": {
+        "start": "2027-02-01",
+        "end": "2027-03-01"
+      },
+      "expected": {
+        "value": "28.00",
+        "currency": "USD"
+      },
+      "contentHash": "f7d80ef6d938663b4253c4a293277565c54562203346ff8a062bff42990869c7"
+    },
+    {
+      "id": "proration-31-day-mid-start",
+      "description": "Mid-period start in a 31-day month",
+      "amount": {
+        "value": "31.00",
+        "currency": "USD"
+      },
+      "used": {
+        "start": "2027-01-11",
+        "end": "2027-02-01"
+      },
+      "period": {
+        "start": "2027-01-01",
+        "end": "2027-02-01"
+      },
+      "expected": {
+        "value": "21.00",
+        "currency": "USD"
+      },
+      "contentHash": "c68ca37beda8ea932affcc143722b7930a5549cab297a9b89c178555b7bf3eaa"
+    },
+    {
+      "id": "proration-30-day-mid-range",
+      "description": "Mid-period start and end in a 30-day month, non-exact division",
+      "amount": {
+        "value": "100.00",
+        "currency": "USD"
+      },
+      "used": {
+        "start": "2027-04-05",
+        "end": "2027-04-20"
+      },
+      "period": {
+        "start": "2027-04-01",
+        "end": "2027-05-01"
+      },
+      "expected": {
+        "value": "50.00",
+        "currency": "USD"
+      },
+      "contentHash": "6949f945930a474b8195170988a03a346ce769b63565fd834aa8b7e2ef2095b8"
+    },
+    {
+      "id": "proration-29-day-leap-february",
+      "description": "Full 29-day leap-year February period",
+      "amount": {
+        "value": "29.00",
+        "currency": "USD"
+      },
+      "used": {
+        "start": "2028-02-01",
+        "end": "2028-03-01"
+      },
+      "period": {
+        "start": "2028-02-01",
+        "end": "2028-03-01"
+      },
+      "expected": {
+        "value": "29.00",
+        "currency": "USD"
+      },
+      "contentHash": "0148f4de7ee0990b53517e11271184601258be7bc17070bc523202451755a223"
+    },
+    {
+      "id": "proration-jpy-zero-decimal",
+      "description": "Zero-decimal currency (JPY) rounds once at the minor unit",
+      "amount": {
+        "value": "3100",
+        "currency": "JPY"
+      },
+      "used": {
+        "start": "2027-01-01",
+        "end": "2027-01-11"
+      },
+      "period": {
+        "start": "2027-01-01",
+        "end": "2027-02-01"
+      },
+      "expected": {
+        "value": "1000",
+        "currency": "JPY"
+      },
+      "contentHash": "3811154311907e5ca026b4b2659958596ed85f7a7db23c98b096aaa748117431"
+    },
+    {
+      "id": "proration-kwd-three-decimal",
+      "description": "Three-decimal currency (KWD) precision",
+      "amount": {
+        "value": "30.000",
+        "currency": "KWD"
+      },
+      "used": {
+        "start": "2027-06-01",
+        "end": "2027-06-11"
+      },
+      "period": {
+        "start": "2027-06-01",
+        "end": "2027-07-01"
+      },
+      "expected": {
+        "value": "10.000",
+        "currency": "KWD"
+      },
+      "contentHash": "3e46631c2fc34d5d235e0219b5f257a9b3fcad77cf999bcd3c4a85a497296495"
+    }
+  ],
+  "allocation": [
+    {
+      "id": "allocation-equal-thirds-usd",
+      "description": "Equal three-way split, largest-remainder tie-break (D5)",
+      "total": {
+        "value": "100.00",
+        "currency": "USD"
+      },
+      "shares": [
+        {
+          "key": "a",
+          "weight": "1"
+        },
+        {
+          "key": "b",
+          "weight": "1"
+        },
+        {
+          "key": "c",
+          "weight": "1"
+        }
+      ],
+      "expected": [
+        {
+          "key": "a",
+          "value": "33.34",
+          "currency": "USD"
+        },
+        {
+          "key": "b",
+          "value": "33.33",
+          "currency": "USD"
+        },
+        {
+          "key": "c",
+          "value": "33.33",
+          "currency": "USD"
+        }
+      ],
+      "contentHash": "b4a037f2fcacaf74c8e45ec0fc777d0c74dcf8f232514036270aef33f44ae499"
+    },
+    {
+      "id": "allocation-equal-thirds-jpy",
+      "description": "Equal three-way split, zero-decimal currency",
+      "total": {
+        "value": "100",
+        "currency": "JPY"
+      },
+      "shares": [
+        {
+          "key": "x",
+          "weight": "1"
+        },
+        {
+          "key": "y",
+          "weight": "1"
+        },
+        {
+          "key": "z",
+          "weight": "1"
+        }
+      ],
+      "expected": [
+        {
+          "key": "x",
+          "value": "34",
+          "currency": "JPY"
+        },
+        {
+          "key": "y",
+          "value": "33",
+          "currency": "JPY"
+        },
+        {
+          "key": "z",
+          "value": "33",
+          "currency": "JPY"
+        }
+      ],
+      "contentHash": "8fbe2ab18e929c07549f31389f35c6fc97d6391559ab0fce0c1e936df4c36164"
+    },
+    {
+      "id": "allocation-weighted-kwd",
+      "description": "Uneven weights with a zero-weight share, three-decimal currency",
+      "total": {
+        "value": "10.000",
+        "currency": "KWD"
+      },
+      "shares": [
+        {
+          "key": "a",
+          "weight": "0.5"
+        },
+        {
+          "key": "b",
+          "weight": "0.25"
+        },
+        {
+          "key": "c",
+          "weight": "0"
+        },
+        {
+          "key": "d",
+          "weight": "0.25"
+        }
+      ],
+      "expected": [
+        {
+          "key": "a",
+          "value": "5.000",
+          "currency": "KWD"
+        },
+        {
+          "key": "b",
+          "value": "2.500",
+          "currency": "KWD"
+        },
+        {
+          "key": "c",
+          "value": "0.000",
+          "currency": "KWD"
+        },
+        {
+          "key": "d",
+          "value": "2.500",
+          "currency": "KWD"
+        }
+      ],
+      "contentHash": "c17b81cfa221c10e0618e2a042d4f9e5f3888a826b376fc3f66c4cecb8dacf5b"
+    },
+    {
+      "id": "allocation-negative-mirrors-positive",
+      "description": "A negative total mirrors the positive allocation exactly",
+      "total": {
+        "value": "-100.00",
+        "currency": "USD"
+      },
+      "shares": [
+        {
+          "key": "a",
+          "weight": "1"
+        },
+        {
+          "key": "b",
+          "weight": "1"
+        },
+        {
+          "key": "c",
+          "weight": "1"
+        }
+      ],
+      "expected": [
+        {
+          "key": "a",
+          "value": "-33.34",
+          "currency": "USD"
+        },
+        {
+          "key": "b",
+          "value": "-33.33",
+          "currency": "USD"
+        },
+        {
+          "key": "c",
+          "value": "-33.33",
+          "currency": "USD"
+        }
+      ],
+      "contentHash": "fe44b9ebf8d4bea1166dd7d9969abc9cff4d20fea957f8f6cc7a2b376a2e834e"
+    }
+  ],
+  "datasetHash": "ca98e21c2f1214d084352ac370f34ab52d3dc795925571feedd528b7a8562aab"
+}

@@ -21,7 +21,9 @@ import { issueToken, signingKey, unsignedToken, type SigningKey } from "./jwt-su
  */
 
 testTelemetry();
-const NOW = new Date("2026-09-25T09:00:00.000Z");
+// Anchored to real time (whole seconds, as JWT times are): principals are re-checked against the
+// wall clock when a tenant context is resolved, so a fixed date would expire these tokens.
+const NOW = new Date(Math.floor(Date.now() / 1000) * 1000);
 const minutes = (count: number) => new Date(NOW.valueOf() + count * 60_000);
 const A = tenantId("tenant_jwt_A");
 const B = tenantId("tenant_jwt_B");
@@ -137,6 +139,30 @@ test("TC-002-02-01 forged, unsigned, symmetric, tampered and mis-addressed token
   }
   assert.ok(facts.every((fact) => fact.outcome === "failed" && fact.reason === "credential_invalid"), JSON.stringify(facts));
   assert.equal(JSON.stringify(facts).includes(valid.split(".")[1]!), false, "facts never carry token contents");
+});
+
+// Specification-derived requirements (master specification §80): each names exactly the one
+// mechanism it demonstrates, so a status claim for one never implies the other two.
+test("TC-MSR-080-3B6F4B3FE4 OIDC/OAuth2: a real jose-verified OIDC bearer token opens an interactive session", async () => {
+  const { authenticator } = fixture();
+  const principal = await asUser(authenticator, await userToken());
+  assert.deepEqual(
+    { kind: principal.kind, mechanism: tenantIdp.mechanism, issuer: principal.issuer, audiences: principal.audiences },
+    { kind: "interactive", mechanism: "oidc", issuer: tenantIdp.issuer, audiences: ["sintius-api"] },
+    "the token was verified as an OIDC/OAuth2 bearer credential against the provider's published keys",
+  );
+  await assert.rejects(asUser(authenticator, await userToken({}, otherKey)), code("authentication_failed"), "a token not signed by the provider's key is not OIDC-valid");
+});
+
+test("TC-MSR-080-477F636C27 MFA: a session requires amr to carry mfa, and single-factor credentials are refused", async () => {
+  const { authenticator } = fixture();
+  const principal = await asUser(authenticator, await userToken({ claims: { amr: ["pwd", "mfa"] } }));
+  assert.equal(principal.assurance, "mfa", "a multi-factor credential is granted mfa assurance");
+  await assert.rejects(
+    asUser(authenticator, await userToken({ claims: { amr: ["pwd"] } })),
+    code("authentication_assurance_insufficient"),
+    "a single-factor credential is refused where the provider policy requires MFA",
+  );
 });
 
 test("TC-002-02-01 key discovery: the published JWKS is fetched, a rotated signing key is picked up and a retired key stops working", async () => {

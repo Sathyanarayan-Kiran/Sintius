@@ -189,6 +189,23 @@
         "modules/identity-tenant/infrastructure/postgres/grant-store.ts",
         "modules/identity-tenant/infrastructure/postgres/migrations/011_role_permission_limits.sql"
       ]
+    },
+    {
+      "requirementId": "MSR-080-3B6F4B3FE4",
+      "reviewedAt": "2026-09-25",
+      "summary": "OIDC/OAuth2 bearer-token authentication is demonstrated directly (not inferred): createJwtCredentialVerifier (jose) verifies the token's signature against the provider's published JWKS/local key set and createAuthenticator maps it to an interactive principal; a token signed by a different key is refused as authentication_failed. Scope: SAML is federated through the identity provider and is not demonstrated in-repo (MSR-080-A555453F8D is not claimed).",
+      "code": [
+        "modules/identity-tenant/infrastructure/jose/jwt-verifier.ts",
+        "modules/identity-tenant/application/authentication.ts"
+      ]
+    },
+    {
+      "requirementId": "MSR-080-477F636C27",
+      "reviewedAt": "2026-09-25",
+      "summary": "MFA is demonstrated directly: a session receives mfa assurance only when the token's amr claim carries mfa, and a provider policy requiring MFA refuses a single-factor (pwd-only) credential with authentication_assurance_insufficient.",
+      "code": [
+        "modules/identity-tenant/application/authentication.ts"
+      ]
     }
   ]
 }

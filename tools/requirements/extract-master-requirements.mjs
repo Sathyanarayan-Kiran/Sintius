@@ -200,7 +200,11 @@ const requirements = candidates.map((candidate, candidateIndex) => {
 });
 
 // Evidence is validated against executed-test status on every generation; an invalid claim fails.
-const implementationEvidence = loadImplementationEvidence(root, requirements);
+// The bootstrap pass (SINTIUS_IGNORE_NORMALIZED=1, run before the backlog generator produces the
+// specification-derived stories evidence may cite) has no normalized mappings yet, so its register
+// is necessarily incomplete and is discarded once the final pass runs; skip evidence validation
+// against it rather than reject a real claim for not yet existing on this intermediate register.
+const implementationEvidence = process.env.SINTIUS_IGNORE_NORMALIZED === "1" ? new Map() : loadImplementationEvidence(root, requirements);
 for (const requirement of requirements) {
   const references = implementationEvidence.get(requirement.id);
   if (references !== undefined) requirement.mappings.implementationEvidence = [...references];

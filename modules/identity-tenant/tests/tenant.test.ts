@@ -6,7 +6,7 @@ import { provisionTenant, transitionTenant } from "../domain/tenant.ts";
 
 const time = (minute: number) => new Date(`2026-09-23T10:${String(minute).padStart(2, "0")}:00.000Z`);
 
-test("provisions and activates a tenant with versioned facts", () => {
+test("TC-002-01-01 provisions and activates a tenant with versioned facts", () => {
   const provisioned = provisionTenant(tenantId("tenant_A"), " Acme ", time(0));
   assert.equal(provisioned.tenant.displayName, "Acme");
   assert.equal(provisioned.tenant.state, "PROVISIONING");
@@ -18,7 +18,7 @@ test("provisions and activates a tenant with versioned facts", () => {
   assert.equal(activated.event.aggregateVersion, 2);
 });
 
-test("supports suspend and reactivate while CLOSED remains terminal", () => {
+test("TC-002-01-02 supports suspend and reactivate while CLOSED remains terminal", () => {
   const provisioned = provisionTenant(tenantId("tenant_A"), "Acme", time(0));
   const active = transitionTenant(provisioned.tenant, "ACTIVE", 1, time(1));
   const suspended = transitionTenant(active.tenant, "SUSPENDED", 2, time(2));
