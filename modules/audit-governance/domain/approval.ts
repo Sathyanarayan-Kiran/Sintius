@@ -4,6 +4,15 @@ import type { ActorId, TenantId } from "../../../platform/tenant-context/src/ind
 export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "CANCELLED";
 export type ApprovalDecisionKind = "approve" | "reject";
 
+/**
+ * Decision D4: an approval policy can name which permissions approvers must hold and how many
+ * distinct approvals each needs, for example Product and Finance for a pricing activation.
+ */
+export interface ApproverRequirement {
+  readonly permission: string;
+  readonly count: number;
+}
+
 /** Shape this module needs from the tenant-configured policy (owned by Identity & Tenant). */
 export interface ApprovalPolicy {
   readonly tenantId: TenantId;
@@ -11,6 +20,8 @@ export interface ApprovalPolicy {
   readonly requiredApprovals: number;
   readonly separationOfDuties: boolean;
   readonly expiresAfterSeconds: number;
+  /** Empty or absent: any holder of approval:request:decide counts toward `requiredApprovals`. */
+  readonly approverRequirements?: readonly ApproverRequirement[];
 }
 
 export interface ApprovalDecision {
@@ -18,6 +29,8 @@ export interface ApprovalDecision {
   readonly decision: ApprovalDecisionKind;
   readonly decidedAt: string;
   readonly reason?: string;
+  /** The approver requirement this decision was counted toward (D4 policies only). */
+  readonly creditedPermission?: string;
 }
 
 /** Immutable evidence record: every transition produces a new frozen snapshot with a higher version. */
@@ -31,6 +44,8 @@ export interface ApprovalRequest {
   readonly makerId: ActorId;
   readonly requiredApprovals: number;
   readonly separationOfDuties: boolean;
+  /** Frozen copy of the policy's requirements when the request was proposed. */
+  readonly approverRequirements: readonly Readonly<ApproverRequirement>[];
   readonly status: ApprovalStatus;
   readonly decisions: readonly Readonly<ApprovalDecision>[];
   readonly version: number;
@@ -89,6 +104,14 @@ export function proposeApproval(input: ProposeApprovalInput, now: Date): Readonl
   if (!Number.isInteger(policy.requiredApprovals) || policy.requiredApprovals < 1 || !(policy.expiresAfterSeconds > 0)) {
     throw problem({ code: "invalid_trusted_context", detail: "Approval policy is invalid." });
   }
+  const requirements = policy.approverRequirements ?? [];
+  const permissions = new Set(requirements.map((requirement) => requirement.permission));
+  if (
+    permissions.size !== requirements.length ||
+    requirements.some((requirement) => typeof requirement.permission !== "string" || requirement.permission.trim() === "" || !Number.isInteger(requirement.count) || requirement.count < 1)
+  ) {
+    throw problem({ code: "invalid_trusted_context", detail: "Approval policy approver requirements are invalid." });
+  }
   const created = instant(now);
   return Object.freeze({
     id: input.id,
@@ -98,8 +121,10 @@ export function proposeApproval(input: ProposeApprovalInput, now: Date): Readonl
     targetId: input.targetId,
     targetVersion: input.targetVersion,
     makerId: input.makerId,
-    requiredApprovals: policy.requiredApprovals,
+    // With named requirements, approval completes when every requirement is met.
+    requiredApprovals: requirements.length === 0 ? policy.requiredApprovals : requirements.reduce((sum, requirement) => sum + requirement.count, 0),
     separationOfDuties: policy.separationOfDuties,
+    approverRequirements: Object.freeze(requirements.map((requirement) => Object.freeze({ permission: requirement.permission, count: requirement.count }))),
     status: "PENDING" as const,
     decisions: Object.freeze([]),
     version: 1,
@@ -120,6 +145,8 @@ export function decideApproval(
     readonly expectedVersion: number;
     readonly target: Readonly<ApprovalTarget>;
     readonly reason?: string;
+    /** Which of the request's requirement permissions the approver holds now (D4 policies). */
+    readonly approverPermissions?: readonly string[];
   },
   now: Date,
 ): Readonly<ApprovalRequest> {
@@ -144,16 +171,47 @@ export function decideApproval(
     throw problem({ code: "separation_of_duties_violation", detail: "An actor may supply only one decision per request." });
   }
   const reason = input.reason?.trim();
+  const credited = creditFor(request, input.decision, input.approverPermissions ?? []);
   const entry: ApprovalDecision = Object.freeze({
     actorId: input.approverId,
     decision: input.decision,
     decidedAt: decidedAt.toISOString(),
     ...(reason === undefined || reason.length === 0 ? {} : { reason }),
+    ...(credited === undefined ? {} : { creditedPermission: credited }),
   });
   const decisions = Object.freeze([...request.decisions, entry]);
-  const approvals = decisions.filter((item) => item.decision === "approve").length;
-  const status: ApprovalStatus = input.decision === "reject" ? "REJECTED" : approvals >= request.requiredApprovals ? "APPROVED" : "PENDING";
+  const status: ApprovalStatus = input.decision === "reject" ? "REJECTED" : isSatisfied(request, decisions) ? "APPROVED" : "PENDING";
   return Object.freeze({ ...request, decisions, status, version: request.version + 1 });
+}
+
+function creditedCount(decisions: readonly Readonly<ApprovalDecision>[], permission: string): number {
+  return decisions.filter((decision) => decision.decision === "approve" && decision.creditedPermission === permission).length;
+}
+
+/**
+ * D4 crediting: an approval counts toward exactly one requirement, the first unmet one (in policy
+ * order) that the approver qualifies for, so one person holding both Product and Finance
+ * permissions cannot satisfy both alone. Any qualifying approver may reject.
+ */
+function creditFor(request: Readonly<ApprovalRequest>, decision: ApprovalDecisionKind, approverPermissions: readonly string[]): string | undefined {
+  if (request.approverRequirements.length === 0) return undefined;
+  const eligible = request.approverRequirements.filter((requirement) => approverPermissions.includes(requirement.permission));
+  if (eligible.length === 0) {
+    throw problem({ code: "approval_approver_not_eligible", detail: "The approver does not hold a permission this approval requires." });
+  }
+  if (decision === "reject") return eligible[0]!.permission;
+  const unmet = eligible.find((requirement) => creditedCount(request.decisions, requirement.permission) < requirement.count);
+  if (unmet === undefined) {
+    throw problem({ code: "approval_approver_not_eligible", detail: "Every requirement this approver can satisfy is already met." });
+  }
+  return unmet.permission;
+}
+
+function isSatisfied(request: Readonly<ApprovalRequest>, decisions: readonly Readonly<ApprovalDecision>[]): boolean {
+  if (request.approverRequirements.length === 0) {
+    return decisions.filter((item) => item.decision === "approve").length >= request.requiredApprovals;
+  }
+  return request.approverRequirements.every((requirement) => creditedCount(decisions, requirement.permission) >= requirement.count);
 }
 
 /** Only the maker may withdraw a still-pending request. */

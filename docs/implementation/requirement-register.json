@@ -35306,7 +35306,14 @@
           "TC-017-01-01",
           "TC-017-01-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/audit/src/model.ts",
+          "code:platform/audit/src/recorder.ts",
+          "code:platform/audit/infrastructure/postgres/writer.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "test:TC-017-01-01",
+          "test:TC-017-01-02"
+        ],
         "notes": "Normalized from master specification §60, line 1518; mapping generated without claiming implementation evidence."
       }
     },
@@ -35348,7 +35355,14 @@
           "TC-017-01-01",
           "TC-017-01-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/audit/src/model.ts",
+          "code:platform/audit/src/recorder.ts",
+          "code:platform/audit/infrastructure/postgres/writer.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "test:TC-017-01-01",
+          "test:TC-017-01-02"
+        ],
         "notes": "Normalized from master specification §60, line 1519; mapping generated without claiming implementation evidence."
       }
     },
@@ -35390,7 +35404,14 @@
           "TC-017-01-01",
           "TC-017-01-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/audit/src/model.ts",
+          "code:platform/audit/src/recorder.ts",
+          "code:platform/audit/infrastructure/postgres/writer.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "test:TC-017-01-01",
+          "test:TC-017-01-02"
+        ],
         "notes": "Normalized from master specification §60, line 1520; mapping generated without claiming implementation evidence."
       }
     },
@@ -35432,7 +35453,14 @@
           "TC-017-01-01",
           "TC-017-01-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/audit/src/model.ts",
+          "code:platform/audit/src/recorder.ts",
+          "code:platform/audit/infrastructure/postgres/writer.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "test:TC-017-01-01",
+          "test:TC-017-01-02"
+        ],
         "notes": "Normalized from master specification §60, line 1521; mapping generated without claiming implementation evidence."
       }
     },
@@ -35474,7 +35502,15 @@
           "TC-017-01-01",
           "TC-017-01-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/audit/src/model.ts",
+          "code:platform/audit/src/recorder.ts",
+          "code:platform/audit/infrastructure/postgres/writer.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "code:platform/tenant-context/src/context.ts",
+          "test:TC-017-01-01",
+          "test:TC-017-01-02"
+        ],
         "notes": "Normalized from master specification §60, line 1522; mapping generated without claiming implementation evidence."
       }
     },
@@ -35516,7 +35552,15 @@
           "TC-017-01-01",
           "TC-017-01-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/audit/src/model.ts",
+          "code:platform/audit/src/recorder.ts",
+          "code:platform/audit/infrastructure/postgres/writer.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "code:platform/audit/src/policy.ts",
+          "test:TC-017-01-01",
+          "test:TC-017-01-02"
+        ],
         "notes": "Normalized from master specification §60, line 1523; mapping generated without claiming implementation evidence."
       }
     },
@@ -35558,7 +35602,15 @@
           "TC-017-01-01",
           "TC-017-01-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/audit/src/model.ts",
+          "code:platform/audit/src/recorder.ts",
+          "code:platform/audit/infrastructure/postgres/writer.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "code:platform/audit/src/policy.ts",
+          "test:TC-017-01-01",
+          "test:TC-017-01-02"
+        ],
         "notes": "Normalized from master specification §60, line 1524; mapping generated without claiming implementation evidence."
       }
     },
@@ -35600,7 +35652,16 @@
           "TC-017-01-01",
           "TC-017-01-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:platform/audit/src/model.ts",
+          "code:platform/audit/src/recorder.ts",
+          "code:platform/audit/infrastructure/postgres/writer.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "code:modules/identity-tenant/application/tenant-commands.ts",
+          "code:platform/outbox/src/operations.ts",
+          "test:TC-017-01-01",
+          "test:TC-017-01-02"
+        ],
         "notes": "Normalized from master specification §60, line 1525; mapping generated without claiming implementation evidence."
       }
     },

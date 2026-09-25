@@ -1,4 +1,5 @@
 import pg from "pg";
+import { appendAuditEvent } from "../../../audit/infrastructure/postgres/writer.ts";
 import type { AuditEvent, AuditWriter } from "../../../audit/src/index.ts";
 import type { EventEnvelope } from "../../../event-envelope/src/index.ts";
 import { toCarrier } from "../../../observability/src/index.ts";
@@ -308,19 +309,7 @@ function boundAuditWriter(client: SqlClient, boundTenant: () => TenantId | undef
       if (boundTenant() !== event.tenantId) {
         throw problem({ code: "tenant_context_mismatch", detail: "The audit event does not belong to the bound tenant." });
       }
-      await client.query(
-        `INSERT INTO audit_event (
-           tenant_id, audit_event_id, occurred_at, recorded_at, actor, action, target, reason,
-           correlation_id, causation_id, approval_id, before_snapshot, after_snapshot, evidence_hash
-         ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14)`,
-        [
-          event.tenantId, event.auditEventId, event.occurredAt, event.recordedAt, JSON.stringify(event.actor),
-          event.action, JSON.stringify(event.target), event.reason ?? null, event.correlationId,
-          event.causationId ?? null, event.approvalId ?? null,
-          event.before === undefined ? null : JSON.stringify(event.before),
-          event.after === undefined ? null : JSON.stringify(event.after), event.evidenceHash,
-        ],
-      );
+      await appendAuditEvent(client, event);
     },
   };
 }

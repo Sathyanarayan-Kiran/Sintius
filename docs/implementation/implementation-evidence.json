@@ -32,6 +32,99 @@
         "platform/idempotency/infrastructure/postgres/store.ts",
         "modules/identity-tenant/infrastructure/postgres/tenant-persistence.ts"
       ]
+    },
+    {
+      "requirementId": "MSR-060-D685CE4383",
+      "reviewedAt": "2026-09-25",
+      "summary": "Every audit event carries actor {id, kind} stamped by createAuditRecorder from the resolver-issued tenant or platform context, never from caller input; the audit_event.actor column is NOT NULL and the application role can only INSERT.",
+      "code": [
+        "platform/audit/src/model.ts",
+        "platform/audit/src/recorder.ts",
+        "platform/audit/infrastructure/postgres/writer.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql"
+      ]
+    },
+    {
+      "requirementId": "MSR-060-72A98A23A1",
+      "reviewedAt": "2026-09-25",
+      "summary": "Every audit event carries a catalogued, lowercase dotted action (for example tenant.suspended, role.revoked, approval.approved) validated by the recorder; audit_event.action is NOT NULL and non-blank.",
+      "code": [
+        "platform/audit/src/model.ts",
+        "platform/audit/src/recorder.ts",
+        "platform/audit/infrastructure/postgres/writer.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql"
+      ]
+    },
+    {
+      "requirementId": "MSR-060-8863CC87AA",
+      "reviewedAt": "2026-09-25",
+      "summary": "Every audit event carries a target {type, id}; the recorder rejects a missing type or id and audit_event.target is a required JSON object.",
+      "code": [
+        "platform/audit/src/model.ts",
+        "platform/audit/src/recorder.ts",
+        "platform/audit/infrastructure/postgres/writer.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql"
+      ]
+    },
+    {
+      "requirementId": "MSR-060-7A4D1C60B6",
+      "reviewedAt": "2026-09-25",
+      "summary": "Every audit event records occurredAt and recordedAt as validated instants (an event cannot occur after it is recorded); both columns are NOT NULL.",
+      "code": [
+        "platform/audit/src/model.ts",
+        "platform/audit/src/recorder.ts",
+        "platform/audit/infrastructure/postgres/writer.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql"
+      ]
+    },
+    {
+      "requirementId": "MSR-060-84A0B159CD",
+      "reviewedAt": "2026-09-25",
+      "summary": "Every audit event records the trusted request origin: the correlation ID (and causation ID when present) and the actor kind (interactive or workload), all taken from the trusted context established at ingress or in the worker.",
+      "code": [
+        "platform/audit/src/model.ts",
+        "platform/audit/src/recorder.ts",
+        "platform/audit/infrastructure/postgres/writer.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+        "platform/tenant-context/src/context.ts"
+      ]
+    },
+    {
+      "requirementId": "MSR-060-03F1D3C250",
+      "reviewedAt": "2026-09-25",
+      "summary": "The before-state is stored only as a safe snapshot: toSafeSnapshot keeps allow-listed fields per target type (deny by default, secret-like names cannot be allow-listed) and redacts values; the evidence hash covers it.",
+      "code": [
+        "platform/audit/src/model.ts",
+        "platform/audit/src/recorder.ts",
+        "platform/audit/infrastructure/postgres/writer.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+        "platform/audit/src/policy.ts"
+      ]
+    },
+    {
+      "requirementId": "MSR-060-7A6587E28A",
+      "reviewedAt": "2026-09-25",
+      "summary": "The after-state is stored only as a safe snapshot through the same deny-by-default allow-list and redaction as the before-state, covered by the evidence hash.",
+      "code": [
+        "platform/audit/src/model.ts",
+        "platform/audit/src/recorder.ts",
+        "platform/audit/infrastructure/postgres/writer.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+        "platform/audit/src/policy.ts"
+      ]
+    },
+    {
+      "requirementId": "MSR-060-987796DF8F",
+      "reviewedAt": "2026-09-25",
+      "summary": "The recorder captures the action reason, redacted and bounded, whenever the command supplies one; commands that require a reason (tenant suspension and closure, dead-letter resolution) reject a missing reason before writing. Scope: each future command that needs a reason must require it the same way.",
+      "code": [
+        "platform/audit/src/model.ts",
+        "platform/audit/src/recorder.ts",
+        "platform/audit/infrastructure/postgres/writer.ts",
+        "modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+        "modules/identity-tenant/application/tenant-commands.ts",
+        "platform/outbox/src/operations.ts"
+      ]
     }
   ]
 }

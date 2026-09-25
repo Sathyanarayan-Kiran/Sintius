@@ -18,6 +18,10 @@ export interface PermissionConstraintStore {
 }
 
 export interface RoleCatalogRepository {
+  /**
+   * Inside a role-administration transaction adapters must also lock the role, so concurrent
+   * assignment changes to one role serialize (the last-administrator guard depends on it).
+   */
   findByCode(tenantId: TenantId, roleCode: string): Promise<Readonly<RoleSnapshot> | undefined>;
 }
 
@@ -26,6 +30,8 @@ export interface RoleAssignmentRepository {
   insert(tenantId: TenantId, actorId: ActorId, roleCode: string): Promise<void>;
   /** Must reject with `role_assignment_not_found` when the pair does not exist. */
   remove(tenantId: TenantId, actorId: ActorId, roleCode: string): Promise<void>;
+  /** Actors currently holding the role in this tenant. */
+  countActiveHolders(tenantId: TenantId, roleCode: string): Promise<number>;
 }
 
 export interface SecurityOutboxWriter {

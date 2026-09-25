@@ -34,6 +34,8 @@ export const PROBLEM_CATALOG = Object.freeze({
   approval_expired: Object.freeze({ status: 409, title: "Approval expired" }),
   approval_version_conflict: Object.freeze({ status: 409, title: "Approval version conflict" }),
   approval_target_mismatch: Object.freeze({ status: 409, title: "Approval target mismatch" }),
+  approval_approver_not_eligible: Object.freeze({ status: 403, title: "Approver not eligible" }),
+  last_administrator_protected: Object.freeze({ status: 409, title: "Last administrator protected" }),
   idempotency_key_required: Object.freeze({ status: 400, title: "Idempotency key required" }),
   idempotency_key_invalid: Object.freeze({ status: 400, title: "Idempotency key invalid" }),
   idempotency_key_reused_with_different_payload: Object.freeze({ status: 409, title: "Idempotency key reused with different payload" }),
