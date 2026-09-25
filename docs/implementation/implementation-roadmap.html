@@ -35,7 +35,7 @@
 <header>
   <h1>Implementation roadmap</h1>
   <p>Live local tracker for the complete master-specification backlog. Canonical delivery stories and source-derived gap stories retain requirement, acceptance-criterion and test traceability with editable delivery status.</p>
-  <div class="meta"><span>Runtime: TypeScript / Node.js 24 LTS</span><span>Database: local PostgreSQL 17</span><span>137/137 automated checks green</span><span>17 canonical epics</span><span>Canonical and source-derived stories</span><span>Requirement-level acceptance criteria</span><span>Requirement-level tests</span><span>Implementation evidence tracked separately</span></div>
+  <div class="meta"><span>Runtime: TypeScript / Node.js 24 LTS</span><span>Database: local PostgreSQL 17</span><span>193/193 automated checks green (Release gate CI)</span><span>17 canonical epics</span><span>Canonical and source-derived stories</span><span>Requirement-level acceptance criteria</span><span>Requirement-level tests</span><span>Implementation evidence tracked separately</span></div>
 </header>
 <div class="wrap">
   <section class="stats" id="stats" aria-label="Roadmap summary"></section>
@@ -47,11 +47,11 @@
     <div class="toolbar-actions"><button id="expandAll">Expand all</button><button id="collapseAll">Collapse</button><button id="export" class="primary">Export status</button><button id="importButton">Import</button><input id="importFile" class="hidden" type="file" accept="application/json"></div>
   </div>
   <div class="source-note"><strong>Tracking model.</strong> The catalogue contains 103 canonical delivery stories plus source-derived gap stories generated from the complete master requirement register. “Tracked tests passing” counts roadmap test records whose status is set to Passing; it is not the number of assertions reported by <code>npm test</code>. Status changes save in this browser only. Use <strong>Export status</strong> to preserve or share them.</div>
-  <div class="source-note"><strong>Automated execution baseline.</strong> 137/137 checks pass: 127 unit tests and 10 live PostgreSQL integration tests. The active-tenant Phase 0 proof is implemented but the release gate remains in progress pending real RBAC composition, dispatcher/trace and CI evidence. Roadmap test status and requirement-level implementation evidence remain separate measures.</div>
+  <div class="source-note"><strong>Automated execution baseline.</strong> 193/193 checks pass in the GitHub Actions Release gate (Node 24, PostgreSQL 17): 161 unit tests and 32 live PostgreSQL integration tests. The Phase 0 proof now runs end to end with RBAC, maker-checker approvals, per-consumer event delivery and one OpenTelemetry trace; remaining Phase 0 work is RLS matrix, token verification, platform-operator identity and persona matrix review. Roadmap test status and requirement-level implementation evidence remain separate measures.</div>
   <div class="source-note" id="masterCoverage"></div>
   <main id="roadmap"></main>
 </div>
-<footer>Updated 2026-09-24 · MVP source: <code>docs/pre-implementation/19-mvp-backlog.md</code> · Future horizons: <code>docs/pre-engineering/SUB-0003_MVP_Scope_Release_Strategy.md</code> · Delivery sequence: <code>docs/pre-implementation/21-technical-implementation-plan.md</code>.</footer>
+<footer>Updated 2026-09-25 · MVP source: <code>docs/pre-implementation/19-mvp-backlog.md</code> · Future horizons: <code>docs/pre-engineering/SUB-0003_MVP_Scope_Release_Strategy.md</code> · Delivery sequence: <code>docs/pre-implementation/21-technical-implementation-plan.md</code>.</footer>
 
 <!-- Legacy snapshot retained for historical diff context only; runtime data comes from implementation-roadmap-data.js. -->
 <script id="legacy-roadmap-seed" type="application/json">

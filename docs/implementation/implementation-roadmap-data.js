@@ -15,7 +15,7 @@
 
   globalThis.SINTIUS_ROADMAP = {
     version: 2,
-    generatedAt: "2026-09-24",
+    generatedAt: "2026-09-25",
     coverage: { mvpBacklogItems: 77, futureCapabilityStories: 24, crossCuttingControlStories: 2, totalStories: 103 },
     epics: [
       E("SUB-E001","SUB-001","Platform Foundation","Multi-horizon","Trusted context, reliable commands, durable events and shared platform controls.",[
