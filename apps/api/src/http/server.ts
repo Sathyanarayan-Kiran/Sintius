@@ -1,4 +1,4 @@
-import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from "fastify";
+import Fastify, { LogController, type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from "fastify";
 import {
   CAUSATION_ID_HEADER,
   CORRELATION_ID_HEADER,
@@ -204,7 +204,7 @@ export function buildApiServer(dependencies: ApiServerDependencies): FastifyInst
       const header = raw.headers[CORRELATION_ID_HEADER];
       return resolveTraceIds({ correlationId: typeof header === "string" ? header : null }).correlationId;
     },
-    requestIdLogLabel: "correlation_id",
+    logController: new LogController({ requestIdLogLabel: "correlation_id" }),
     // Reject unknown properties instead of silently dropping them, and never coerce types.
     ajv: { customOptions: { removeAdditional: false, coerceTypes: false, useDefaults: false, allErrors: true } },
   });

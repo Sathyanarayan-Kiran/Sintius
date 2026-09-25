@@ -279,3 +279,20 @@ test("the bearer adapter extracts only a well-formed credential and delegates ev
   }
   assert.equal(seen.length, 1);
 });
+
+test("P0-002 request logs are labelled with the correlation ID and never include the credential", async () => {
+  const lines: Record<string, unknown>[] = [];
+  const app = buildApiServer({
+    authenticator,
+    tenantStates: { stateOf: async () => "ACTIVE" },
+    logger: { level: "info", stream: { write: (line: string) => void lines.push(JSON.parse(line)) } },
+  });
+  await app.inject({ method: "GET", url: "/health/live", headers: { "x-correlation-id": "corr-log-1", authorization: "Bearer token-a" } });
+  const requestLines = lines.filter((line) => line.msg === "incoming request" || line.msg === "request completed");
+  assert.equal(requestLines.length, 2);
+  for (const line of requestLines) {
+    assert.equal(line.correlation_id, "corr-log-1");
+    assert.equal(Object.hasOwn(line, "reqId"), false, "the default label is replaced");
+  }
+  assert.doesNotMatch(JSON.stringify(lines), /token-a/, "the bearer credential never reaches logs");
+});
