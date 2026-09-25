@@ -12,9 +12,20 @@ Current generated baseline:
 
 ## Files
 
-- `sintius-jira-issues.csv` — 17 epics plus the complete canonical and source-derived story backlog. `Status`, `Implementation Status` and `Progress` are derived every run from each story's durable status in `docs/implementation/implementation-roadmap-data.js`; an epic's `Status` rolls up from every story assigned to it (canonical and source-derived).
+- `sintius-jira-issues.csv` — 17 epics plus the complete canonical and source-derived story backlog, in one file. `Status`, `Implementation Status` and `Progress` are derived every run from each story's durable status in `docs/implementation/implementation-roadmap-data.js`; an epic's `Status` rolls up from every story assigned to it (canonical and source-derived).
+- `sintius-jira-epics.csv` / `sintius-jira-stories.csv` — the same rows, split by issue type, for a **two-pass import** (below). Use these two instead of the combined file when the target Jira project's importer needs epics to exist before it can link stories to them (typical for team-managed projects).
 - `sintius-requirement-traceability.csv` — one row for every extracted source candidate, including disposition, source location, story, acceptance-criterion and test links.
 - `sintius-test-catalogue.csv` — associated tests, planned automation state and evidence placeholder.
+- `jira-epic-keys.json` — editable source (see "Two-pass import" below), not generated.
+
+## Two-pass import (epics, then stories)
+
+1. Import `sintius-jira-epics.csv` first. Jira assigns each epic a real issue key (e.g. `SINT-1`).
+2. Record those keys in `jira-epic-keys.json` (editable source, not generated) — `{"SUB-E001": "SINT-1", "SUB-E002": "SINT-2", ...}`, keyed by each epic's `External ID` from `sintius-jira-epics.csv`.
+3. Run `npm run backlog:generate`. `sintius-jira-stories.csv` regenerates with each story's `Epic Link` set to the real Jira key you just recorded, instead of the internal epic ID (`SUB-E00x`) — so the story import can link directly to an *existing* epic rather than asking Jira to create/match one by name.
+4. Import `sintius-jira-stories.csv`.
+
+An epic missing from `jira-epic-keys.json` still gets its stories generated; their `Epic Link` just falls back to the internal epic ID, which Jira's field-mapping screen can still resolve manually (map each distinct `Epic Link` value found in the file to an existing epic) — the mapping file only saves you from doing that by hand for every epic.
 
 ## Jira CSV import mapping
 

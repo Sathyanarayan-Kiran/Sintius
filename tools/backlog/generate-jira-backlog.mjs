@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import { loadSpecificationTestStatus } from "../requirements/specification-test-status.ts";
@@ -7,6 +7,19 @@ const root = resolve(import.meta.dirname, "../..");
 const implementationDir = resolve(root, "docs/implementation");
 const jiraDir = resolve(implementationDir, "jira");
 mkdirSync(jiraDir, { recursive: true });
+
+/**
+ * Two-pass Jira import support: epics are imported first (sintius-jira-epics.csv), then their real
+ * Jira issue keys are recorded here (editable source, see jira/README.md) so the stories CSV's
+ * `Epic Link` column can reference an *existing* Jira epic instead of our internal epic ID. Missing
+ * or unmapped epics fall back to the internal ID, which the field-mapping step of Jira's importer
+ * can still resolve manually (map each distinct Epic Link value to an existing epic).
+ */
+const epicKeysPath = resolve(jiraDir, "jira-epic-keys.json");
+const epicKeys = existsSync(epicKeysPath) ? JSON.parse(readFileSync(epicKeysPath, "utf8")) : {};
+function jiraEpicLinkFor(internalEpicId) {
+  return epicKeys[internalEpicId] || internalEpicId;
+}
 
 /**
  * Maps a story's durable implementation status (implementation-roadmap-data.js) to one of Jira's
@@ -313,7 +326,7 @@ for (const story of allStories) {
   jiraRows.push({
     "Issue ID": nextIssueId++, "Issue Type": "Story", Summary: story.title,
     Description: story.description || `As a ${story.persona}, I want ${story.title.toLowerCase()}, so that ${epic.goal.charAt(0).toLowerCase()}${epic.goal.slice(1)}`,
-    "Epic Name": "", "Epic Link": story.epicId, Parent: epicIssueId.get(story.epicId), "External ID": story.id,
+    "Epic Name": "", "Epic Link": jiraEpicLinkFor(story.epicId), Parent: epicIssueId.get(story.epicId), "External ID": story.id,
     Labels: `sintius ${story.phase.toLowerCase().replaceAll(" ", "-")} master-specification`, Priority: "Medium",
     Status: jiraStatusFor(story.implementation), "Implementation Status": story.implementation || "not_started", Progress: story.progress ?? "",
     "Acceptance Criteria": acceptance.join("\n"), "Requirement IDs": (story.requirementIds || []).join(";"),
@@ -346,6 +359,17 @@ writeFileSync(resolve(implementationDir, "normalized-backlog-data.js"), browserD
 writeFileSync(resolve(jiraDir, "sintius-jira-issues.csv"), csv(Object.keys(jiraRows[0]), jiraRows));
 writeFileSync(resolve(jiraDir, "sintius-requirement-traceability.csv"), csv(Object.keys(traceRows[0]), traceRows));
 writeFileSync(resolve(jiraDir, "sintius-test-catalogue.csv"), csv(Object.keys(testRows[0]), testRows));
+
+// Two-pass import support (jira/README.md "Two-pass import"): epics first, then stories once their
+// real Jira epic keys are recorded in jira-epic-keys.json (jiraEpicLinkFor above).
+const epicRows = jiraRows.filter((row) => row["Issue Type"] === "Epic");
+const storyRows = jiraRows.filter((row) => row["Issue Type"] === "Story");
+writeFileSync(resolve(jiraDir, "sintius-jira-epics.csv"), csv(Object.keys(jiraRows[0]), epicRows));
+writeFileSync(resolve(jiraDir, "sintius-jira-stories.csv"), csv(Object.keys(jiraRows[0]), storyRows));
+const unmappedEpics = epicRows.filter((row) => !Object.hasOwn(epicKeys, row["External ID"])).length;
+if (unmappedEpics > 0) {
+  console.log(`sintius-jira-stories.csv: ${unmappedEpics}/${epicRows.length} epics have no entry in jira-epic-keys.json yet, so their stories' Epic Link still reads the internal epic ID.`);
+}
 
 console.log(`Normalized ${normalized.length} candidates: ${normalizedBacklog.counts.acceptedRequirements} accepted, ${normalizedBacklog.counts.contextParents} context parents.`);
 console.log(`Jira backlog: ${normalizedBacklog.epics.length} epics, ${normalizedBacklog.counts.totalStories} stories (${normalizedBacklog.counts.generatedStories} source-derived), ${normalizedBacklog.counts.acceptanceCriteria} acceptance criteria, ${normalizedBacklog.counts.tests} tests.`);

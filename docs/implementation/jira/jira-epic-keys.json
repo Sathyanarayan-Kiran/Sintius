@@ -1,0 +1,3 @@
+{
+  "_comment": "Editable source, not generated. Maps our internal epic ID (External ID on the epic rows in sintius-jira-epics.csv) to the real Jira issue key assigned when that epic was imported (e.g. SINT-1). tools/backlog/generate-jira-backlog.mjs reads this file: once an entry exists for an epic, every story under that epic gets the real Jira key in its Epic Link column in sintius-jira-stories.csv, instead of the internal epic ID. An epic with no entry here still gets its stories generated; their Epic Link just falls back to the internal ID, which Jira's own field-mapping step can resolve manually. Run npm run backlog:generate after editing this file."
+}
