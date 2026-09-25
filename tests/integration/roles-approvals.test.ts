@@ -175,7 +175,12 @@ test("D3 PostgreSQL: the last administrator is protected, even when two administ
     ]);
     assert.deepEqual(results.map((result) => result.status).sort(), ["fulfilled", "rejected"], `round ${round}: exactly one mutual revocation wins`);
     const rejected = results.find((result) => result.status === "rejected") as PromiseRejectedResult;
-    assert.ok(code("last_administrator_protected")(rejected.reason), `round ${round}: the loser is refused by the guard`);
+    // The loser is refused either by the guard (it counted one remaining administrator) or, if the
+    // winner committed before the loser's own authorization ran, because it is no longer an administrator.
+    assert.ok(
+      code("last_administrator_protected")(rejected.reason) || code("permission_denied")(rejected.reason),
+      `round ${round}: the loser is refused by the guard or by its lost authority`,
+    );
     const active = await rows("SELECT actor_id FROM tenant_role_assignment WHERE tenant_id = $1 AND role_code = 'tenant_administrator' AND status = 'active'", [A]);
     assert.equal(active.length, 1, `round ${round}: the tenant still has exactly one administrator`);
     survivor = String(active[0]!.actor_id);
