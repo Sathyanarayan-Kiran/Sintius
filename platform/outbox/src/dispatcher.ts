@@ -1,5 +1,6 @@
+import { SpanKind, contextFromCarrier, telemetryMetrics, withSpan } from "../../observability/src/index.ts";
 import { redactSensitiveText } from "../../problem-model/src/index.ts";
-import type { EventPublisher, OutboxStore } from "./ports.ts";
+import type { EventPublisher, OutboxEntry, OutboxStore } from "./ports.ts";
 
 export interface DispatchReport {
   readonly leased: number;
@@ -14,6 +15,8 @@ export interface DispatcherDependencies {
   readonly publisher: EventPublisher;
   readonly clock: () => Date;
   readonly workerId: string;
+  /** Telemetry label: "outbox" or the consumer name of a delivery queue. */
+  readonly queueName?: string;
   readonly leaseSeconds?: number;
   readonly batchSize?: number;
   readonly maxAttempts?: number;
@@ -41,6 +44,24 @@ export function createOutboxDispatcher(dependencies: DispatcherDependencies) {
   const batchSize = dependencies.batchSize ?? 50;
   const maxAttempts = dependencies.maxAttempts ?? 8;
   const retryDelaySeconds = dependencies.retryDelaySeconds ?? defaultRetryDelaySeconds;
+  const queueName = dependencies.queueName ?? "outbox";
+  // Each hand-over is a PRODUCER span that continues the trace stored with the entry.
+  const handOver = (entry: Readonly<OutboxEntry>) =>
+    withSpan(
+      `${queueName} hand-over ${entry.envelope.type}`,
+      {
+        kind: SpanKind.PRODUCER,
+        parent: contextFromCarrier(entry.traceContext),
+        attributes: {
+          "messaging.system": "sintius",
+          "messaging.destination.name": queueName,
+          "sintius.event.type": entry.envelope.type,
+          "sintius.correlation_id": entry.envelope.correlation_id,
+          "sintius.delivery.attempt": entry.attempts,
+        },
+      },
+      () => publisher.publish(entry.envelope),
+    );
 
   return async function runOnce(): Promise<DispatchReport> {
     const leaseNow = clock();
@@ -64,7 +85,7 @@ export function createOutboxDispatcher(dependencies: DispatcherDependencies) {
         continue;
       }
       try {
-        await publisher.publish(entry.envelope);
+        await handOver(entry);
       } catch (error) {
         const now = clock();
         const exhausted = entry.attempts >= maxAttempts;
@@ -84,6 +105,10 @@ export function createOutboxDispatcher(dependencies: DispatcherDependencies) {
       if (ok) published += 1;
       else leaseLost += 1;
     }
+    telemetryMetrics.queueOutcome(queueName, "published", published);
+    telemetryMetrics.queueOutcome(queueName, "retried", retried);
+    telemetryMetrics.queueOutcome(queueName, "dead_lettered", deadLettered);
+    telemetryMetrics.queueOutcome(queueName, "lease_lost", leaseLost);
     return { leased: entries.length, published, retried, deadLettered, leaseLost };
   };
 }

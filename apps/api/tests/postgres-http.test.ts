@@ -5,8 +5,10 @@ import { createAuthenticator } from "../../../modules/identity-tenant/applicatio
 import type { IdentityProviderPolicy, VerifiedCredentialClaims } from "../../../modules/identity-tenant/application/authentication-ports.ts";
 import { AllowListAuthorizer } from "../../../modules/identity-tenant/tests/in-memory-persistence.ts";
 import type { EventEnvelope } from "../../../platform/event-envelope/src/index.ts";
-import { PostgresOutboxStore } from "../../../platform/outbox/infrastructure/postgres/store.ts";
-import { createOutboxDispatcher } from "../../../platform/outbox/src/index.ts";
+import { finishedSpans, metricValue, resetSpans, serializedTelemetry, testTelemetry } from "../../../platform/observability/tests/support.ts";
+import { PostgresInboxPersistence, PostgresOutboxStore } from "../../../platform/outbox/infrastructure/postgres/store.ts";
+import { PostgresEventPublisher } from "../../../platform/outbox/infrastructure/postgres/transport.ts";
+import { createDeliveryWorker, createIdempotentConsumer, createOutboxDispatcher, type InboxStore } from "../../../platform/outbox/src/index.ts";
 import { tenantId } from "../../../platform/tenant-context/src/index.ts";
 import { composePostgresApi } from "../src/composition/postgres.ts";
 import { createBearerAuthenticator } from "../src/http/bearer-authenticator.ts";
@@ -18,6 +20,7 @@ import { createBearerAuthenticator } from "../src/http/bearer-authenticator.ts";
  */
 
 const { Pool } = pg;
+testTelemetry();
 const adminUrl = process.env.SINTIUS_MIGRATION_DATABASE_URL ?? "postgresql://sintius_admin@127.0.0.1:54329/sintius";
 const appUrl = process.env.SINTIUS_DATABASE_URL ?? "postgresql://sintius_app@127.0.0.1:54329/sintius";
 const dispatcherUrl = process.env.SINTIUS_DISPATCHER_DATABASE_URL ?? "postgresql://sintius_dispatcher@127.0.0.1:54329/sintius";
@@ -178,4 +181,71 @@ test("P0-010 one ingress correlation ID spans HTTP, RBAC, idempotent commit, aud
     "the published event carries the ingress correlation ID",
   );
   assert.equal(published.length, 5, "two provisioned, two activated and one proof event");
+});
+
+test("P0-010 / D15 one trace spans HTTP ingress, the command transaction, audit, dispatch, delivery and consumption", async () => {
+  await activeTenantOverHttp(A, "3");
+  await admin.query(`INSERT INTO tenant_role (tenant_id, role_code, permissions) VALUES ($1, 'proof_operator', '["foundation:proof:execute"]')`, [A]);
+  await admin.query(`INSERT INTO tenant_role_assignment (tenant_id, actor_id, role_code) VALUES ($1, 'proof_user', 'proof_operator')`, [A]);
+  const executedBefore = await metricValue("sintius.idempotency.requests", { "sintius.command.scope": "foundation.proof.record", "sintius.idempotency.outcome": "executed" });
+  const replayedBefore = await metricValue("sintius.idempotency.requests", { "sintius.command.scope": "foundation.proof.record", "sintius.idempotency.outcome": "replayed" });
+  resetSpans();
+
+  const headers = { "idempotency-key": "8f14e45f-ceea-467f-a0e6-7c2d3e4f5a6b", "x-correlation-id": "corr-d15-trace" };
+  const first = await call("POST", "/v1/foundation/proofs", "user-a-token", headers, { label: "traced" });
+  assert.equal(first.statusCode, 201, first.body);
+  const replay = await call("POST", "/v1/foundation/proofs", "user-a-token", { ...headers, "x-correlation-id": "corr-d15-replay" }, { label: "traced" });
+  assert.equal(replay.statusCode, 201);
+
+  const proofType = "com.subrevos.foundation.proof_recorded.v1";
+  const clock = () => NOW;
+  const outboxStore = new PostgresOutboxStore({ connectionString: dispatcherUrl });
+  const publisher = new PostgresEventPublisher({ routes: [{ consumer: "billing.projector", eventTypes: [proofType] }], clock, connectionString: dispatcherUrl });
+  const deliveryStore = new PostgresOutboxStore({ connectionString: dispatcherUrl, queue: { kind: "delivery", consumer: "billing.projector" } });
+  const inbox = new PostgresInboxPersistence<{ readonly inbox: InboxStore }>({ connectionString: appUrl, unitOfWork: () => ({}) });
+  try {
+    await createOutboxDispatcher({ store: outboxStore, publisher, clock, workerId: "trace_relay" })();
+    const consume = createIdempotentConsumer({ consumer: "billing.projector", persistence: inbox, clock, handle: async () => {} });
+    const report = await createDeliveryWorker({ store: deliveryStore, consume, clock, workerId: "trace_billing", queueName: "billing.projector" })();
+    assert.equal(report.published, 1);
+  } finally {
+    await Promise.all([outboxStore.close(), publisher.close(), deliveryStore.close(), inbox.close()]);
+  }
+
+  const spans = finishedSpans();
+  const server = spans.find((span) => span.name === "POST /v1/foundation/proofs" && span.attributes["sintius.correlation_id"] === "corr-d15-trace");
+  assert.ok(server, "the request produced a server span named by its route template");
+  const trace = spans.filter((span) => span.spanContext().traceId === server.spanContext().traceId);
+  const named = (name: string) => {
+    const found = trace.find((span) => span.name === name);
+    assert.ok(found, `${name} is in the request's trace; trace has ${trace.map((span) => span.name).join(", ")}`);
+    return found;
+  };
+  const command = named("command foundation.proof.record");
+  const outboxHandOver = named(`outbox hand-over ${proofType}`);
+  const deliveryHandOver = named(`billing.projector hand-over ${proofType}`);
+  const consumed = named(`consume ${proofType}`);
+  const parentOf = (span: typeof server) => span.parentSpanContext?.spanId;
+  assert.equal(parentOf(command), server.spanContext().spanId, "the command runs under the request");
+  assert.equal(parentOf(outboxHandOver), command.spanContext().spanId, "dispatch continues the trace stored with the outbox entry");
+  assert.equal(parentOf(deliveryHandOver), outboxHandOver.spanContext().spanId, "delivery continues the trace stored with the delivery");
+  assert.equal(parentOf(consumed), deliveryHandOver.spanContext().spanId);
+
+  assert.deepEqual(command.events.map((event) => [event.name, event.attributes?.["sintius.audit.action"]]), [["audit.recorded", "foundation.proof_recorded"]]);
+  assert.equal(command.attributes["sintius.idempotency.outcome"], "executed");
+  assert.deepEqual(
+    [server, command, outboxHandOver, deliveryHandOver, consumed].map((span) => span.attributes["sintius.correlation_id"]),
+    ["corr-d15-trace", "corr-d15-trace", "corr-d15-trace", "corr-d15-trace", "corr-d15-trace"],
+  );
+  assert.equal(server.attributes["http.route"], "/v1/foundation/proofs");
+  assert.equal(server.attributes["http.response.status_code"], 201);
+
+  const replayCommand = spans.find((span) => span.name === "command foundation.proof.record" && span.attributes["sintius.correlation_id"] === "corr-d15-replay");
+  assert.equal(replayCommand?.attributes["sintius.idempotency.outcome"], "replayed");
+  assert.equal(await metricValue("sintius.idempotency.requests", { "sintius.command.scope": "foundation.proof.record", "sintius.idempotency.outcome": "executed" }) - executedBefore, 1);
+  assert.equal(await metricValue("sintius.idempotency.requests", { "sintius.command.scope": "foundation.proof.record", "sintius.idempotency.outcome": "replayed" }) - replayedBefore, 1);
+
+  const serialized = serializedTelemetry(spans);
+  assert.doesNotMatch(serialized, /user-a-token|Bearer/, "the credential never reaches telemetry");
+  assert.doesNotMatch(serialized, /tenant_http_pg_A/, "tenant identifiers are not span attributes");
 });

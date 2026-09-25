@@ -1,5 +1,6 @@
 import pg from "pg";
 import type { EventEnvelope } from "../../../event-envelope/src/index.ts";
+import { currentTraceCarrier } from "../../../observability/src/index.ts";
 import type { EventPublisher } from "../../src/ports.ts";
 
 const { Client, Pool } = pg;
@@ -66,9 +67,9 @@ export class PostgresEventPublisher implements EventPublisher {
       `WITH inserted AS (
          INSERT INTO event_delivery (
            consumer, tenant_id, event_id, event_type, aggregate_type, aggregate_id, aggregate_version,
-           envelope, next_attempt_at, enqueued_at
+           envelope, next_attempt_at, enqueued_at, trace_context
          )
-         SELECT consumer, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $9
+         SELECT consumer, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $9, $10::jsonb
            FROM unnest($1::text[]) AS consumer
          ON CONFLICT (consumer, tenant_id, event_id) DO NOTHING
          RETURNING consumer
@@ -77,6 +78,11 @@ export class PostgresEventPublisher implements EventPublisher {
       [
         consumers, envelope.tenant_id, envelope.id, envelope.type, envelope.aggregate_type, envelope.aggregate_id,
         envelope.aggregate_version, JSON.stringify(envelope), now,
+        // The hand-over span is active here, so consumers become its children in the same trace.
+        (() => {
+          const carrier = currentTraceCarrier();
+          return carrier === undefined ? null : JSON.stringify(carrier);
+        })(),
       ],
     );
   }

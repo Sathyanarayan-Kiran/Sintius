@@ -27,9 +27,19 @@
     "check:requirements": "node tools/requirements/check-coverage.mjs",
     "check": "npm run typecheck && npm run check:architecture && npm run check:roadmap && npm run check:requirements && npm test && npm run check:postgres",
     "typecheck": "tsc -p tsconfig.json",
-    "check:evidence": "node tools/requirements/check-evidence.mjs"
+    "check:evidence": "node tools/requirements/check-evidence.mjs",
+    "observability:up": "docker compose --profile observability up -d observability",
+    "observability:down": "docker compose --profile observability stop observability"
   },
   "dependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/context-async-hooks": "2.11.0",
+    "@opentelemetry/core": "2.11.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "0.222.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.222.0",
+    "@opentelemetry/resources": "2.11.0",
+    "@opentelemetry/sdk-metrics": "2.11.0",
+    "@opentelemetry/sdk-trace-base": "2.11.0",
     "fastify": "5.12.5",
     "pg": "8.23.0"
   },

@@ -1,4 +1,5 @@
 import Fastify, { LogController, type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from "fastify";
+import { SpanKind, SpanStatusCode, runInSpan, setSpanAttributes, startSpan, telemetryMetrics, type Span } from "../../../../platform/observability/src/index.ts";
 import {
   CAUSATION_ID_HEADER,
   CORRELATION_ID_HEADER,
@@ -85,6 +86,8 @@ const BODY_LIMIT_BYTES = 256 * 1024;
 interface RequestState {
   correlationId: string;
   causationId?: string;
+  /** Server span for the request; command, audit and event spans become its children. */
+  span?: Span;
   principal?: Readonly<AuthenticatedPrincipal>;
   tenantContext?: Readonly<TenantContext>;
 }
@@ -157,6 +160,8 @@ function sendProblem(error: unknown, request: FastifyRequest, reply: FastifyRepl
     },
     sink,
   );
+  telemetryMetrics.problem(response.body.code, response.status);
+  if (state?.span !== undefined) setSpanAttributes(state.span, { "sintius.problem.code": response.body.code });
   reply.code(response.status).headers(response.headers);
   if (response.body.code === "authentication_failed") reply.header("www-authenticate", 'Bearer realm="sintius"');
   return reply.send(Buffer.from(JSON.stringify(response.body)));
@@ -213,13 +218,32 @@ export function buildApiServer(dependencies: ApiServerDependencies): FastifyInst
   app.addHook("onRequest", async (request, reply) => {
     const causation = singleHeader(request, CAUSATION_ID_HEADER);
     const trace = resolveTraceIds({ correlationId: request.id, causationId: causation ?? null });
-    states.set(request, { correlationId: trace.correlationId, ...(trace.causationId === undefined ? {} : { causationId: trace.causationId }) });
+    const span = startSpan(`HTTP ${request.method}`, {
+      kind: SpanKind.SERVER,
+      attributes: {
+        "http.request.method": request.method,
+        "sintius.correlation_id": trace.correlationId,
+        "sintius.causation_id": trace.causationId,
+      },
+    });
+    states.set(request, { correlationId: trace.correlationId, ...(trace.causationId === undefined ? {} : { causationId: trace.causationId }), span });
     reply.header(CORRELATION_ID_HEADER, trace.correlationId);
     if (request.routeOptions.config && (request.routeOptions.config as { public?: boolean }).public === true) return;
     stateOf(request).principal = await dependencies.authenticator.authenticate({
       authorization: singleHeader(request, "authorization"),
       correlationId: trace.correlationId,
     });
+  });
+
+  // Ends the server span with the route template (never raw paths, which can carry identifiers).
+  app.addHook("onResponse", async (request, reply) => {
+    const span = states.get(request)?.span;
+    if (span === undefined) return;
+    const route = request.routeOptions.url ?? "unmatched";
+    span.updateName(`${request.method} ${route}`);
+    setSpanAttributes(span, { "http.route": route, "http.response.status_code": reply.statusCode });
+    if (reply.statusCode >= 500) span.setStatus({ code: SpanStatusCode.ERROR, message: "server error" });
+    span.end();
   });
 
   app.setErrorHandler((error, request, reply) => sendProblem(error, request, reply, sink));
@@ -262,10 +286,16 @@ export function buildApiServer(dependencies: ApiServerDependencies): FastifyInst
     });
   }
 
+  /** Runs route work with the request's server span active, so its spans nest under the request. */
+  function traced<T>(request: FastifyRequest, work: () => Promise<T>): Promise<T> {
+    const span = stateOf(request).span;
+    return span === undefined ? work() : runInSpan(span, work);
+  }
+
   function inTenant<T>(request: FastifyRequest, work: () => Promise<T>): Promise<T> {
     const context = stateOf(request).tenantContext;
     if (context === undefined) throw new Error("Route requires a tenant context but none was resolved.");
-    return runWithTenantContext(context, work);
+    return runWithTenantContext(context, () => traced(request, work));
   }
 
   app.get("/health/live", { config: { public: true } }, async () => ({ status: "ok" }));
@@ -302,11 +332,11 @@ export function buildApiServer(dependencies: ApiServerDependencies): FastifyInst
       },
       async (request, reply) => {
         const body = request.body as { readonly tenant_id: string; readonly display_name: string; readonly initial_administrator_actor_id: string };
-        const tenant = await tenants.provisionTenant(
+        const tenant = await traced(request, () => tenants.provisionTenant(
           platformContext(request),
           { tenantId: body.tenant_id, displayName: body.display_name, initialAdministratorActorId: body.initial_administrator_actor_id },
           metadataOf(request),
-        );
+        ));
         return reply.code(201).header("etag", `"${tenant.version}"`).header("location", `/v1/platform/tenants/${encodeURIComponent(tenant.id)}`).send(tenantBody(tenant));
       },
     );
@@ -332,11 +362,11 @@ export function buildApiServer(dependencies: ApiServerDependencies): FastifyInst
           const expectedVersion = expectedVersionOf(request);
           let tenant: Readonly<TenantRepresentation>;
           try {
-            tenant = await command(
+            tenant = await traced(request, () => command(
               platformContext(request),
               { tenantId: target, expectedVersion, ...(reason === undefined ? {} : { reason }) },
               metadataOf(request),
-            );
+            ));
           } catch (error) {
             // A stale If-Match is a failed precondition (spec section 9), not a generic conflict.
             if (error instanceof PlatformProblem && error.problem.code === "tenant_version_conflict") {

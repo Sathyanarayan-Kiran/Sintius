@@ -1,6 +1,7 @@
 import pg from "pg";
 import type { AuditEvent, AuditWriter } from "../../../audit/src/index.ts";
 import type { EventEnvelope } from "../../../event-envelope/src/index.ts";
+import { toCarrier } from "../../../observability/src/index.ts";
 import { problem } from "../../../problem-model/src/index.ts";
 import { tenantId, type TenantId } from "../../../tenant-context/src/index.ts";
 import type { DeadLetterPersistence, DeadLetterUnitOfWork } from "../../src/operations.ts";
@@ -61,6 +62,7 @@ function entryFrom(row: Record<string, unknown>, sql: QueueSql): Readonly<Outbox
     ...optional("last_error", "lastError"),
     ...optional(sql.doneAt, "publishedAt", iso),
     ...optional("resolution", "resolution", (value) => Object.freeze(structuredClone(value))),
+    ...(toCarrier(row.trace_context) === undefined ? {} : { traceContext: toCarrier(row.trace_context) }),
   }) as Readonly<OutboxEntry>;
 }
 

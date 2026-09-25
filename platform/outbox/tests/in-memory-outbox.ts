@@ -1,4 +1,5 @@
 import type { EventEnvelope } from "../../event-envelope/src/index.ts";
+import { currentTraceCarrier, type TraceCarrier } from "../../observability/src/index.ts";
 import type {
   DeadLetterInfo,
   InboxPersistence,
@@ -43,11 +44,11 @@ export class InMemoryOutbox implements OutboxStore {
 
   async runInTransaction<T>(work: (unitOfWork: TestUnitOfWork) => Promise<T>): Promise<T> {
     const rows: string[] = [];
-    const appended: Readonly<EventEnvelope>[] = [];
+    const appended: { envelope: Readonly<EventEnvelope>; traceContext: TraceCarrier | undefined }[] = [];
     const inboxStaged = new Set<string>();
     const result = await work({
       domain: { write: (row) => void rows.push(row) },
-      outbox: { append: async (envelope) => void appended.push(envelope) },
+      outbox: { append: async (envelope) => void appended.push({ envelope, traceContext: currentTraceCarrier() }) },
       inbox: {
         tryRecord: async ({ consumer, tenantId, eventId }) => {
           const key = [consumer, tenantId, eventId].map(encodeURIComponent).join("|");
@@ -58,7 +59,7 @@ export class InMemoryOutbox implements OutboxStore {
       },
     });
     this.domainRows.push(...rows);
-    for (const envelope of appended) {
+    for (const { envelope, traceContext } of appended) {
       this.#sequence += 1;
       this.entries.push({
         entryId: `out_${this.#sequence}`,
@@ -68,6 +69,7 @@ export class InMemoryOutbox implements OutboxStore {
         attempts: 0,
         nextAttemptAt: envelope.recorded_at,
         appendedAt: envelope.recorded_at,
+        ...(traceContext === undefined ? {} : { traceContext }),
       });
     }
     for (const key of inboxStaged) this.inboxRecords.add(key);
