@@ -8,6 +8,8 @@ import { ROLE_AUDIT_FIELDS, createRoleAdministration, createTenantAuthorizer } f
 import { createPostgresApprovalPolicyReader } from "../../modules/identity-tenant/infrastructure/postgres/approval-policy-reader.ts";
 import { PostgresPermissionGrantStore } from "../../modules/identity-tenant/infrastructure/postgres/grant-store.ts";
 import { PostgresSecurityPersistence } from "../../modules/identity-tenant/infrastructure/postgres/security-persistence.ts";
+import { DEFAULT_APPROVAL_POLICIES } from "../../modules/identity-tenant/domain/approval-defaults.ts";
+import { defaultPersonaRoleTemplates } from "../../modules/identity-tenant/domain/persona-matrix.ts";
 import { createAuditPolicy, createAuditRecorder, type AuditRecorder } from "../../platform/audit/src/index.ts";
 import { PlatformProblem } from "../../platform/problem-model/src/index.ts";
 import { resolveTenantContext, runWithTenantContext, tenantId, type TenantId } from "../../platform/tenant-context/src/index.ts";
@@ -293,4 +295,42 @@ test("approval evidence is append-only and tenant-isolated in the database itsel
     "versions advance one at a time",
   );
   assert.equal((await attempt(B, "SELECT * FROM approval_request")).rowCount, 0, "tenant B sees none of tenant A's requests");
+});
+
+test("D9 PostgreSQL persona roles: role limits bind only their own role, and the default pricing policy needs the Product Manager and the Finance Controller", async () => {
+  const { approvals, authorizer } = compose();
+  for (const template of defaultPersonaRoleTemplates()) {
+    await admin.query(
+      "INSERT INTO tenant_role (tenant_id, role_code, permissions, permission_limits) VALUES ($1, $2, $3::jsonb, $4::jsonb)",
+      [A, `persona_${template.roleCode}`, JSON.stringify(template.permissions), JSON.stringify(template.limits)],
+    );
+  }
+  for (const policy of DEFAULT_APPROVAL_POLICIES) {
+    await admin.query(
+      "INSERT INTO approval_policy (tenant_id, action_type, required_approvals, separation_of_duties, expires_after_seconds, approver_requirements) VALUES ($1, $2, $3, $4, $5, $6::jsonb)",
+      [A, policy.actionType, policy.requiredApprovals, policy.separationOfDuties, policy.expiresAfterSeconds, JSON.stringify(policy.approverRequirements)],
+    );
+  }
+  for (const [actor, persona] of [["billing_1", "billing_administrator"], ["controller_1", "finance_controller"], ["product_1", "product_manager"], ["pricing_1", "pricing_manager"]]) {
+    await seedAssignment(A, actor!, `persona_${persona}`);
+  }
+
+  const refund = (actor: string, minorUnits: number) => as(A, actor, () => authorizer.hasPermission("payments:payment:refund", { amount_minor: minorUnits }));
+  assert.deepEqual(
+    [await refund("billing_1", 1_000_000), await refund("billing_1", 1_000_001), await refund("controller_1", 25_000_000)],
+    [true, false, true],
+    "the Billing Administrator's USD 10,000 limit is read from PostgreSQL and binds only that role",
+  );
+
+  const target: ApprovalTarget = { ...TARGET, targetId: "rc_persona" };
+  const proposed = await as(A, "pricing_1", () => approvals.proposeApproval(target));
+  assert.equal(proposed.requiredApprovals, 2);
+  const decide = (actor: string, version: number) =>
+    as(A, actor, () => approvals.decideApproval({ approvalId: proposed.id, decision: "approve", expectedVersion: version, target }));
+  await assert.rejects(decide("pricing_1", 1), code("permission_denied"), "the Pricing Manager proposes but never decides");
+  await assert.rejects(decide("billing_1", 1), code("permission_denied"), "the Billing Administrator is not an approver");
+  const afterProduct = await decide("product_1", 1);
+  assert.deepEqual([afterProduct.status, afterProduct.decisions[0]?.creditedPermission], ["PENDING", PRODUCT]);
+  const approved = await decide("controller_1", 2);
+  assert.deepEqual([approved.status, approved.decisions.map((item) => item.creditedPermission)], ["APPROVED", [PRODUCT, FINANCE]]);
 });

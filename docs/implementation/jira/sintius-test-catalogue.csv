@@ -20,7 +20,7 @@
 "TC-002-01-03","Atomic tenant/default-role/admin persistence","integration","passing","US-BL-002-01","SUB-E002","MSR-082-83D62B3FFC","Planned",""
 "TC-002-02-01","OIDC/SAML claim and key validation","security","passing","US-BL-002-02","SUB-E002","","Planned",""
 "TC-002-02-02","MFA, expiry and revocation behavior","integration","passing","US-BL-002-02","SUB-E002","","Planned",""
-"TC-002-03-01","Role-permission allow/deny matrix","security","partial","US-BL-002-03","SUB-E002","MSR-061-7A36036152;MSR-061-1B4B96A6E3;MSR-061-AD99726B55;MSR-061-10DF979CB3;MSR-061-FC23E1A2AC;MSR-061-5B5141CF8A;MSR-061-090E641078;MSR-061-63FDAF8F3E;MSR-061-C9828F9E74;MSR-061-5C468F3F8B;MSR-061-A7460DEF70;MSR-061-3232EC982D;MSR-061-2B41953787","Planned",""
+"TC-002-03-01","Role-permission allow/deny matrix","security","passing","US-BL-002-03","SUB-E002","MSR-061-7A36036152;MSR-061-1B4B96A6E3;MSR-061-AD99726B55;MSR-061-10DF979CB3;MSR-061-FC23E1A2AC;MSR-061-5B5141CF8A;MSR-061-090E641078;MSR-061-63FDAF8F3E;MSR-061-C9828F9E74;MSR-061-5C468F3F8B;MSR-061-A7460DEF70;MSR-061-3232EC982D;MSR-061-2B41953787","Planned",""
 "TC-002-03-02","Self-approval rejection and second-party approval","integration","passing","US-BL-002-03","SUB-E002","MSR-062-8989FE4287;MSR-062-BC82DFEC91;MSR-062-2876276E95;MSR-062-B080DE07A3;MSR-062-58A24733E1;MSR-100-C2940C4995","Planned",""
 "TC-002-04-01","Workload audience and scope enforcement","security","passing","US-BL-002-04","SUB-E002","","Planned",""
 "TC-002-04-02","Workload/interactive identity separation","contract","passing","US-BL-002-04","SUB-E002","","Planned",""

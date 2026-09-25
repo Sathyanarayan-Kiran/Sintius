@@ -36620,7 +36620,14 @@
         "testIds": [
           "TC-002-03-01"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:modules/identity-tenant/domain/authorization.ts",
+          "code:modules/identity-tenant/application/authorization.ts",
+          "code:modules/identity-tenant/domain/persona-matrix.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/grant-store.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/011_role_permission_limits.sql",
+          "test:TC-002-03-01"
+        ],
         "notes": "Normalized from master specification §61, line 1557; mapping generated without claiming implementation evidence."
       }
     },

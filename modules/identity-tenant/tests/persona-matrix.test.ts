@@ -40,7 +40,7 @@ test("D9 the matrix covers exactly the 12 personas of master spec §61 and only 
   assert.ok(PERSONA_GRANTS.every((value) => value.permission !== "foundation:proof:execute"));
 });
 
-test("D9 default role templates ship only unconditional specification grants; everything else waits for a decision", () => {
+test("D9 default role templates ship only reviewed grants, with their role limits; declined grants never ship", () => {
   const templates = defaultPersonaRoleTemplates();
   assert.equal(templates.length, 12);
   for (const template of templates) {
@@ -49,10 +49,14 @@ test("D9 default role templates ship only unconditional specification grants; ev
       assert.ok(source !== undefined && isDefaultGrant(source), `${template.roleCode} ${permission} ships only with an unconditional spec basis`);
     }
   }
-  for (const pending of pendingGrants()) {
-    const template = templates.find((candidate) => candidate.roleCode === pending.persona)!;
-    assert.equal(template.permissions.includes(pending.permission), false, `${pending.persona} ${pending.permission} is pending`);
-  }
+  assert.deepEqual(pendingGrants(), [], "the Product Owner reviewed every grant on 2026-09-25");
+  const operations = templates.find((candidate) => candidate.roleCode === "operations")!;
+  assert.deepEqual(operations.permissions, [], "a declined grant never ships");
+  const billing = templates.find((candidate) => candidate.roleCode === "billing_administrator")!;
+  assert.deepEqual(
+    billing.limits.map((limit) => [limit.permission, limit.attribute, limit.operator, limit.value]),
+    [["billing:invoice:finalize", "amount_minor", "lte", 1_000_000], ["payments:payment:refund", "amount_minor", "lte", 1_000_000]],
+  );
 });
 
 test("D9 the review document shows the matrix exactly as the code defines it", () => {
@@ -64,7 +68,9 @@ test("D9 the review document shows the matrix exactly as the code defines it", (
 
 test("TC-002-03-01 persona allow/deny matrix: each default persona role allows exactly its grants, in its own tenant only", async () => {
   const templates = defaultPersonaRoleTemplates();
-  const roleOf = new Map<string, Readonly<RoleSnapshot>>(templates.map((template) => [`${A}|user_${template.roleCode}`, { roleCode: template.roleCode, permissions: template.permissions, status: "active" as const }]));
+  const roleOf = new Map<string, Readonly<RoleSnapshot>>(
+    templates.map((template) => [`${A}|user_${template.roleCode}`, { roleCode: template.roleCode, permissions: template.permissions, status: "active" as const, limits: template.limits }]),
+  );
   const authorizer = createTenantAuthorizer({
     grants: {
       async loadAssignedRoles(tenant: TenantId, actor: ActorId) {
@@ -80,7 +86,8 @@ test("TC-002-03-01 persona allow/deny matrix: each default persona role allows e
   let denied = 0;
   for (const template of templates) {
     for (const permission of PERMISSION_CATALOG) {
-      const expected = template.permissions.includes(permission);
+      // Without resource attributes, a limited grant fails closed; unlimited grants allow.
+      const expected = template.permissions.includes(permission) && !template.limits.some((limit) => limit.permission === permission);
       assert.equal(await as(A, `user_${template.roleCode}`, () => authorizer.hasPermission(permission)), expected, `${template.roleCode} ${permission}`);
       assert.equal(await as(B, `user_${template.roleCode}`, () => authorizer.hasPermission(permission)), false, `${template.roleCode} holds nothing in tenant B`);
       if (expected) allowed += 1;
@@ -90,5 +97,12 @@ test("TC-002-03-01 persona allow/deny matrix: each default persona role allows e
   assert.equal(allowed + denied, 12 * PERMISSION_CATALOG.length);
   assert.ok(allowed >= 10, "the specification grants are present");
   assert.equal(await as(A, "user_unassigned", () => authorizer.hasPermission("audit:read")), false, "no role, no permission");
+
+  // Role limits bind only their own role: the Billing Administrator refunds up to USD 10,000, the Finance Controller any amount.
+  const refund = (actor: string, minorUnits: number) => as(A, actor, () => authorizer.hasPermission("payments:payment:refund", { amount_minor: minorUnits }));
+  assert.equal(await refund("user_billing_administrator", 1_000_000), true);
+  assert.equal(await refund("user_billing_administrator", 1_000_001), false);
+  assert.equal(await refund("user_finance_controller", 50_000_000), true);
+  assert.equal(await as(A, "user_billing_administrator", () => authorizer.hasPermission("billing:invoice:finalize", { amount_minor: "1000" })), false, "a mistyped attribute fails closed");
   assert.equal(actorId("user_auditor"), "user_auditor");
 });

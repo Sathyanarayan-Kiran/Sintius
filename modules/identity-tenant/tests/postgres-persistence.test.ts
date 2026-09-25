@@ -109,6 +109,12 @@ test("TC-002-01-03 PostgreSQL commits tenant, default role, administrator, audit
   assert.equal(await count("tenant", tenant.id), 1);
   assert.equal(await count("tenant_role", tenant.id), 1);
   assert.equal(await count("tenant_role_assignment", tenant.id), 1);
+  // D9 review: every tenant starts with the default pricing-activation policy (Product + Finance).
+  const policy = await admin.query("SELECT action_type, required_approvals, separation_of_duties, approver_requirements FROM approval_policy WHERE tenant_id = $1", [tenant.id]);
+  assert.deepEqual(policy.rows, [{
+    action_type: "pricing:rate_card:activate", required_approvals: 2, separation_of_duties: true,
+    approver_requirements: [{ permission: "pricing:rate_card:activate", count: 1 }, { permission: "billing:invoice:finalize", count: 1 }],
+  }]);
   assert.equal(await count("audit_event", tenant.id), 1);
   assert.equal(await count("outbox_event", tenant.id), 1);
   const row = await admin.query("SELECT state, row_version FROM tenant WHERE tenant_id = $1", [tenant.id]);
@@ -131,7 +137,7 @@ test("P0-010 concurrent provisioning retry commits one tenant, audit, outbox and
   ]);
 
   assert.deepEqual(results[1], results[0]);
-  for (const table of ["tenant", "tenant_role", "tenant_role_assignment", "audit_event", "outbox_event", "idempotency_record"]) {
+  for (const table of ["tenant", "tenant_role", "tenant_role_assignment", "approval_policy", "audit_event", "outbox_event", "idempotency_record"]) {
     assert.equal(await count(table, "tenant_phase0_proof"), 1, `${table} must contain exactly one committed record`);
   }
   const stored = await admin.query(
@@ -254,7 +260,7 @@ test("TC-002-01-03 a PostgreSQL failure rolls every earlier provisioning write b
     /injected PostgreSQL integration audit failure/,
   );
 
-  for (const table of ["tenant", "tenant_role", "tenant_role_assignment", "audit_event", "outbox_event"]) {
+  for (const table of ["tenant", "tenant_role", "tenant_role_assignment", "approval_policy", "audit_event", "outbox_event"]) {
     assert.equal(await count(table, "tenant_pg_rollback"), 0, `${table} must roll back`);
   }
 });

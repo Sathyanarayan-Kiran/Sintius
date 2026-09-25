@@ -75,6 +75,7 @@ The critical path is `P0-001 -> P0-002 -> P0-003 -> P0-004 -> P0-005 -> P0-006 -
 
 ## P0-005 — RBAC and maker-checker skeleton (`BL-002-03`)
 
+- **Implementation status:** Implemented for Phase 0. Deny-by-default RBAC with live grants, tenant constraints and role-scoped limits; maker-checker with named approvers (D4) and the last-administrator guard (D3), on PostgreSQL. The persona matrix (D9) was reviewed by the Product Owner on 2026-09-25, and every tenant starts with a default pricing-activation policy. Remaining (proposed for Phase 1): approval expiry sweeper, ApprovalPolicy management commands, ingress routes.
 - **Persona:** Tenant administrator and Finance Controller.
 - **Intent:** Assign roles and enforce permissions plus two-person approval where policy requires it.
 - **Business value:** Enforces least privilege and separation of duties before financial workflows arrive.

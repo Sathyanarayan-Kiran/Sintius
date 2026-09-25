@@ -41,6 +41,12 @@ export interface RoleSnapshot {
   readonly roleCode: string;
   readonly permissions: readonly Permission[];
   readonly status: RoleStatus;
+  /**
+   * Limits on this role's own grants (D9), for example a Billing Administrator who may refund only
+   * up to a threshold. A limit narrows only the role it belongs to; another role holding the same
+   * permission without a limit is unaffected.
+   */
+  readonly limits?: readonly Readonly<PermissionConstraint>[];
 }
 
 /** Deny by default: only permissions granted by an active role count; unknown names never match. */
@@ -103,4 +109,21 @@ export function constraintsSatisfied(
         return false;
     }
   });
+}
+
+/**
+ * True when some active role grants the permission for these resource attributes: the role holds
+ * the permission and every limit it attaches to that permission is satisfied (fail closed).
+ */
+export function grantedByRoles(
+  roles: readonly Readonly<RoleSnapshot>[],
+  permission: Permission,
+  attributes: Readonly<Record<string, ConstraintValue>>,
+): boolean {
+  return roles.some(
+    (role) =>
+      role.status === "active" &&
+      role.permissions.includes(permission) &&
+      constraintsSatisfied((role.limits ?? []).filter((limit) => limit.permission === permission), attributes),
+  );
 }
