@@ -6,6 +6,7 @@ import "../platform/event-envelope/tests/event-envelope.test.ts";
 import "../modules/identity-tenant/tests/tenant.test.ts";
 import "../modules/identity-tenant/tests/tenant-commands.test.ts";
 import "../modules/identity-tenant/tests/authentication.test.ts";
+import "../modules/identity-tenant/tests/jwt-authentication.test.ts";
 import "../modules/identity-tenant/tests/authorization.test.ts";
 import "../modules/audit-governance/tests/approval.test.ts";
 import "../platform/idempotency/tests/idempotency.test.ts";

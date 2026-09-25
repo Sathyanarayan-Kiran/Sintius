@@ -149,7 +149,7 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
         key: metadata.idempotencyKey,
         payload: { display_name: change.tenant.displayName, initial_administrator_actor_id: administrator },
       },
-      () => authorize(context, "tenant:provision"),
+      () => authorize(context, "platform:tenant:provision"),
       async (unitOfWork) => {
         await unitOfWork.tenants.insert(change.tenant);
         await unitOfWork.roles.insertDefaultAdministratorRole({ tenantId: id, roleCode: "tenant_administrator" });
@@ -197,7 +197,7 @@ export function createTenantCommands(dependencies: TenantCommandDependencies) {
           ...(reason === undefined || reason.length === 0 ? {} : { reason }),
         },
       },
-      () => authorize(context, "tenant:manage_lifecycle"),
+      () => authorize(context, "platform:tenant:lifecycle"),
       async (unitOfWork) => {
         const current = await unitOfWork.tenants.findById(id);
         if (current === undefined) {

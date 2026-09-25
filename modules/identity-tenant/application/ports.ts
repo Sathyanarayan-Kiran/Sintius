@@ -2,6 +2,7 @@ import type { AuditWriter } from "../../../platform/audit/src/index.ts";
 import type { IdempotencyStore } from "../../../platform/idempotency/src/index.ts";
 import type { OutboxWriter } from "../../../platform/outbox/src/index.ts";
 import type { ActorId, PlatformCommandContext, TenantId } from "../../../platform/tenant-context/src/index.ts";
+import type { PlatformPermission } from "../domain/platform-access.ts";
 import type { TenantSnapshot } from "../domain/tenant.ts";
 
 /**
@@ -9,7 +10,7 @@ import type { TenantSnapshot } from "../domain/tenant.ts";
  * the application root; this module never imports another module's tables or internals.
  */
 
-export type TenantPlatformPermission = "tenant:provision" | "tenant:manage_lifecycle";
+export type TenantPlatformPermission = "platform:tenant:provision" | "platform:tenant:lifecycle";
 
 /** Deny-by-default authorization for platform-scoped commands; the real RBAC adapter arrives with P0-005. */
 export interface PlatformAuthorizer {

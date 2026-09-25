@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import { after, beforeEach, test } from "node:test";
+import { after, before, beforeEach, test } from "node:test";
 import pg from "pg";
 import { createAuthenticator } from "../../../modules/identity-tenant/application/authentication.ts";
-import type { IdentityProviderPolicy, VerifiedCredentialClaims } from "../../../modules/identity-tenant/application/authentication-ports.ts";
-import { AllowListAuthorizer } from "../../../modules/identity-tenant/tests/in-memory-persistence.ts";
+import type { IdentityProviderPolicy } from "../../../modules/identity-tenant/application/authentication-ports.ts";
+import { PLATFORM_AUDIENCE } from "../../../modules/identity-tenant/domain/platform-access.ts";
+import { createJwtCredentialVerifier, localKeySet } from "../../../modules/identity-tenant/infrastructure/jose/jwt-verifier.ts";
+import { PostgresCredentialStatusStore } from "../../../modules/identity-tenant/infrastructure/postgres/credential-status.ts";
+import { issueToken, signingKey, type SigningKey } from "../../../modules/identity-tenant/tests/jwt-support.ts";
 import type { EventEnvelope } from "../../../platform/event-envelope/src/index.ts";
 import { finishedSpans, metricValue, resetSpans, serializedTelemetry, testTelemetry } from "../../../platform/observability/tests/support.ts";
 import { PostgresInboxPersistence, PostgresOutboxStore } from "../../../platform/outbox/infrastructure/postgres/store.ts";
@@ -11,11 +14,12 @@ import { PostgresEventPublisher } from "../../../platform/outbox/infrastructure/
 import { createDeliveryWorker, createIdempotentConsumer, createOutboxDispatcher, type InboxStore } from "../../../platform/outbox/src/index.ts";
 import { tenantId } from "../../../platform/tenant-context/src/index.ts";
 import { composePostgresApi } from "../src/composition/postgres.ts";
-import { createBearerAuthenticator } from "../src/http/bearer-authenticator.ts";
+import { createBearerAuthenticator, createPlatformBearerAuthenticator } from "../src/http/bearer-authenticator.ts";
 
 /**
- * P0-010 through HTTP on PostgreSQL: a real Fastify ingress, the provider-neutral authentication
- * service (only signature verification is a test double), tenant lifecycle over HTTP, live RBAC,
+ * P0-010 through HTTP on PostgreSQL: a real Fastify ingress, real signed tokens verified by jose
+ * (tenant users and platform operators on separate audiences, D8/D11), the durable revocation
+ * list, tenant lifecycle over HTTP under the production platform authorizer, live RBAC,
  * the idempotent proof and the outbox dispatcher, all joined by the one ingress correlation ID.
  */
 
@@ -29,7 +33,7 @@ const NOW = new Date("2026-09-24T12:00:00.000Z");
 const A = tenantId("tenant_http_pg_A");
 const B = tenantId("tenant_http_pg_B");
 
-const policy: IdentityProviderPolicy = Object.freeze({
+const tenantIdp: IdentityProviderPolicy = Object.freeze({
   id: "oidc-admin",
   mechanism: "oidc",
   issuer: "https://idp.example.test",
@@ -38,56 +42,49 @@ const policy: IdentityProviderPolicy = Object.freeze({
   requireMfa: true,
   allowedWorkloadScopes: Object.freeze([]),
 });
+const platformIdp: IdentityProviderPolicy = Object.freeze({ ...tenantIdp, id: "oidc-platform", issuer: "https://staff.example.test", allowedAudiences: Object.freeze([PLATFORM_AUDIENCE]) });
 
-function claims(credentialId: string, subject: string, tenants: readonly string[]): Readonly<VerifiedCredentialClaims> {
-  return Object.freeze({
-    mechanism: "oidc" as const,
-    credentialId,
-    subject,
-    issuer: policy.issuer,
-    audiences: Object.freeze(["sintius-api"]),
-    tenantIds: Object.freeze(tenants.map((value) => tenantId(value))),
-    authenticationMethods: Object.freeze(["pwd", "mfa"]),
-    scopes: Object.freeze([]),
-    expiresAt: "2099-01-01T00:00:00.000Z",
+// Real signed tokens from test identity providers: signature, key and claim checks all run for real.
+const tokens: Record<"operator-token" | "user-a-token" | "user-b-token", string> = { "operator-token": "", "user-a-token": "", "user-b-token": "" };
+let tenantKey: SigningKey;
+let staffKey: SigningKey;
+
+before(async () => {
+  [tenantKey, staffKey] = await Promise.all([signingKey("tenant-idp-1"), signingKey("staff-idp-1")]);
+  // The test clock is fixed, but tenant and platform contexts re-check expiry against real time.
+  const window = { issuedAt: new Date(NOW.valueOf() - 60_000), expiresAt: new Date("2099-01-01T00:00:00.000Z") };
+  tokens["operator-token"] = await issueToken(staffKey, {
+    ...window, issuer: platformIdp.issuer, audience: PLATFORM_AUDIENCE, subject: "platform_operator", jti: "cred_operator",
+    claims: { amr: ["pwd", "mfa"], sintius_platform_roles: ["platform_tenant_provisioner", "platform_tenant_lifecycle_operator"] },
   });
-}
-
-// Test-only verifier: stands in for signature/JWKS validation, which awaits the identity-provider decision.
-const credentials = new Map([
-  // Platform operators have no identity model yet; this membership only satisfies the interactive-principal rule.
-  ["operator-token", claims("cred_operator", "platform_operator", ["tenant_platform_operations"])],
-  ["user-a-token", claims("cred_user_a", "proof_user", [A])],
-  ["user-b-token", claims("cred_user_b", "proof_user", [B])],
-]);
-const revoked = new Set<string>();
+  for (const [name, tenant, jti] of [["user-a-token", A, "cred_user_a"], ["user-b-token", B, "cred_user_b"]] as const) {
+    tokens[name] = await issueToken(tenantKey, {
+      ...window, issuer: tenantIdp.issuer, audience: "sintius-api", subject: "proof_user", jti, claims: { amr: ["pwd", "mfa"], sintius_tenants: [tenant] },
+    });
+  }
+});
 
 let api: ReturnType<typeof composePostgresApi>;
+const revocations = new PostgresCredentialStatusStore({ connectionString: appUrl, maxConnections: 2 });
 
 beforeEach(async () => {
   await api?.close();
-  revoked.clear();
+  await admin.query("DELETE FROM credential_revocation");
   await admin.query(
     "TRUNCATE foundation_proof_record, idempotency_record, outbox_event, audit_event, tenant_role_assignment, tenant_role, tenant RESTART IDENTITY CASCADE",
   );
-  api = composePostgresApi({
-    authenticator: createBearerAuthenticator({
-      providerId: "oidc-admin",
-      audience: "sintius-api",
-      authenticator: createAuthenticator({
-        policies: { findById: async (id) => (id === policy.id ? policy : undefined) },
-        verifier: {
-          verify: async (raw) => {
-            const value = credentials.get(raw);
-            if (value === undefined) throw new Error("signature invalid");
-            return value;
-          },
-        },
-        credentialStatus: { isRevoked: async (id) => revoked.has(id) },
-        clock: () => NOW,
-      }),
+  const authentication = createAuthenticator({
+    policies: { findById: async (id) => [tenantIdp, platformIdp].find((candidate) => candidate.id === id) },
+    verifier: createJwtCredentialVerifier({
+      clock: () => NOW,
+      providers: { "oidc-admin": { keys: localKeySet({ keys: [tenantKey.jwk] }) }, "oidc-platform": { keys: localKeySet({ keys: [staffKey.jwk] }) } },
     }),
-    platformAuthorizer: new AllowListAuthorizer(["tenant:provision", "tenant:manage_lifecycle"]),
+    credentialStatus: revocations,
+    clock: () => NOW,
+  });
+  api = composePostgresApi({
+    authenticator: createBearerAuthenticator({ providerId: "oidc-admin", audience: "sintius-api", authenticator: authentication }),
+    platformAuthenticator: createPlatformBearerAuthenticator({ providerId: "oidc-platform", authenticator: authentication }),
     connectionString: appUrl,
     clock: () => NOW,
     enableFoundationProof: true,
@@ -96,14 +93,15 @@ beforeEach(async () => {
 
 after(async () => {
   await api?.close();
+  await revocations.close();
   await admin.end();
 });
 
-const call = (method: "POST" | "GET", url: string, token: string, headers: Record<string, string> = {}, body?: unknown) =>
+const call = (method: "POST" | "GET", url: string, token: keyof typeof tokens, headers: Record<string, string> = {}, body?: unknown) =>
   api.app.inject({
     method,
     url,
-    headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
+    headers: { authorization: `Bearer ${tokens[token]}`, ...(body === undefined ? {} : { "content-type": "application/json" }), ...headers },
     ...(body === undefined ? {} : { payload: JSON.stringify(body) }),
   });
 
@@ -147,7 +145,8 @@ test("P0-010 one ingress correlation ID spans HTTP, RBAC, idempotent commit, aud
   const smuggled = await call("POST", "/v1/foundation/proofs", "user-a-token", trace, { label: "phase-0-exit", tenant_id: B });
   assert.deepEqual([smuggled.statusCode, smuggled.json().code], [400, "untrusted_tenant_context"]);
 
-  revoked.add("cred_user_a");
+  // Revocation arrives in the durable list (from the identity provider's feed) and applies to the next request.
+  await admin.query("INSERT INTO credential_revocation (issuer, credential_id, expires_at, reason) VALUES ($1, 'cred_user_a', $2, 'session ended')", [tenantIdp.issuer, "2099-01-01T00:00:00Z"]);
   const afterRevocation = await call("POST", "/v1/foundation/proofs", "user-a-token", trace, { label: "phase-0-exit" });
   assert.deepEqual([afterRevocation.statusCode, afterRevocation.json().code], [401, "authentication_failed"], "a revoked credential cannot even replay");
 
@@ -246,6 +245,35 @@ test("P0-010 / D15 one trace spans HTTP ingress, the command transaction, audit,
   assert.equal(await metricValue("sintius.idempotency.requests", { "sintius.command.scope": "foundation.proof.record", "sintius.idempotency.outcome": "replayed" }) - replayedBefore, 1);
 
   const serialized = serializedTelemetry(spans);
-  assert.doesNotMatch(serialized, /user-a-token|Bearer/, "the credential never reaches telemetry");
+  assert.equal(serialized.includes(tokens["user-a-token"].split(".")[1]!), false, "the credential never reaches telemetry");
+  assert.doesNotMatch(serialized, /Bearer/, "nor does the authorization header");
   assert.doesNotMatch(serialized, /tenant_http_pg_A/, "tenant identifiers are not span attributes");
+});
+
+test("TC-002-02-02 durable revocation: the next request of a revoked user or operator is refused, keyed by issuer and token ID", async () => {
+  await activeTenantOverHttp(A, "1");
+  const provision = (id: string, key: string) =>
+    call("POST", "/v1/platform/tenants", "operator-token", { "idempotency-key": key }, {
+      tenant_id: id, display_name: id, initial_administrator_actor_id: `admin_${id}`,
+    });
+  const revoke = (issuer: string, credentialId: string) =>
+    admin.query("INSERT INTO credential_revocation (issuer, credential_id, expires_at) VALUES ($1, $2, '2099-01-01T00:00:00Z')", [issuer, credentialId]);
+
+  // The same token ID from another issuer is a different credential and stays valid.
+  await revoke("https://other-idp.example.test", "cred_operator");
+  assert.equal((await provision("tenant_http_pg_C", "8f14e45f-ceea-467f-a0e6-000000003001")).statusCode, 201);
+  await revoke(platformIdp.issuer, "cred_operator");
+  const refused = await provision("tenant_http_pg_D", "8f14e45f-ceea-467f-a0e6-000000003002");
+  assert.deepEqual([refused.statusCode, refused.json().code], [401, "authentication_failed"], "a revoked operator is refused on the next request");
+
+  // The application can read the list but never write or erase it.
+  const client = new pg.Client({ connectionString: appUrl });
+  await client.connect();
+  try {
+    await assert.rejects(client.query("INSERT INTO credential_revocation (issuer, credential_id, expires_at) VALUES ('x', 'y', now())"), { code: "42501" });
+    await assert.rejects(client.query("DELETE FROM credential_revocation"), { code: "42501" });
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM credential_revocation")).rows[0].n, 2);
+  } finally {
+    await client.end();
+  }
 });

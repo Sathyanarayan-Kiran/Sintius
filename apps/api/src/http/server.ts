@@ -69,7 +69,10 @@ export type FoundationProofCommand = (
 ) => Promise<Readonly<{ readonly proofRecordId: string; readonly label: string; readonly recordedAt: string }>>;
 
 export interface ApiServerDependencies {
+  /** Tenant users (and, later, workloads) on the tenant API audience. */
   readonly authenticator: RequestAuthenticator;
+  /** Platform operators on the platform audience (decision D11); required when platform routes are mounted. */
+  readonly platformAuthenticator?: RequestAuthenticator;
   readonly tenantStates: TenantStateReader;
   readonly tenantCommands?: TenantLifecycleCommands;
   /** Test-only diagnostic route; mounted only when supplied. */
@@ -228,8 +231,12 @@ export function buildApiServer(dependencies: ApiServerDependencies): FastifyInst
     });
     states.set(request, { correlationId: trace.correlationId, ...(trace.causationId === undefined ? {} : { causationId: trace.causationId }), span });
     reply.header(CORRELATION_ID_HEADER, trace.correlationId);
-    if (request.routeOptions.config && (request.routeOptions.config as { public?: boolean }).public === true) return;
-    stateOf(request).principal = await dependencies.authenticator.authenticate({
+    const config = (request.routeOptions.config ?? {}) as { public?: boolean; platform?: boolean };
+    if (config.public === true) return;
+    // Platform routes accept only platform-operator credentials, and tenant routes only tenant ones.
+    const authenticator = config.platform === true ? dependencies.platformAuthenticator : dependencies.authenticator;
+    if (authenticator === undefined) throw new Error("A platform route was mounted without a platform authenticator.");
+    stateOf(request).principal = await authenticator.authenticate({
       authorization: singleHeader(request, "authorization"),
       correlationId: trace.correlationId,
     });
@@ -317,10 +324,14 @@ export function buildApiServer(dependencies: ApiServerDependencies): FastifyInst
   }
 
   const tenants = dependencies.tenantCommands;
+  if (tenants !== undefined && dependencies.platformAuthenticator === undefined) {
+    throw new Error("Platform tenant routes require a platform authenticator (decision D11).");
+  }
   if (tenants !== undefined) {
     app.post(
       "/v1/platform/tenants",
       {
+        config: { platform: true },
         schema: {
           body: {
             type: "object",
@@ -351,6 +362,7 @@ export function buildApiServer(dependencies: ApiServerDependencies): FastifyInst
       app.post(
         `/v1/platform/tenants/:tenantId/${verb}`,
         {
+          config: { platform: true },
           schema: {
             params: { type: "object", required: ["tenantId"], properties: { tenantId: nonBlank } },
             body: { type: "object", additionalProperties: false, properties: { reason: { type: "string", maxLength: 500 } } },

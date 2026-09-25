@@ -25,6 +25,12 @@ export interface SqlClient {
 /** Platform metadata that holds no tenant data. Anything else in the schema must be tenant-isolated. */
 export const NON_TENANT_TABLES: Readonly<Record<string, string>> = Object.freeze({
   schema_migration: "Migration bookkeeping, written only by the migration role.",
+  credential_revocation: "Revoked token IDs, read during authentication before any tenant is known; read-only for the application.",
+});
+
+/** Reviewed read policies on non-tenant tables. Application roles may never write a non-tenant table. */
+export const NON_TENANT_POLICIES: Readonly<Record<string, string>> = Object.freeze({
+  "credential_revocation.revocation_read": "SELECT",
 });
 
 /**
@@ -64,6 +70,7 @@ export const PRIVILEGE_MANIFEST: Readonly<Record<ApplicationRole, Readonly<Recor
     outbox_event: ["INSERT"],
     // Granted with the outbox (migration 005); the identity column itself needs no sequence privilege.
     outbox_event_entry_id_seq: ["SELECT", "USAGE"],
+    credential_revocation: ["SELECT"],
     tenant: ["INSERT", "SELECT", "UPDATE"],
     tenant_identity_provider: ["INSERT", "SELECT", "UPDATE"],
     tenant_role: ["INSERT", "SELECT", "UPDATE"],
@@ -197,6 +204,13 @@ export async function auditIsolationCatalog(client: SqlClient): Promise<string[]
     if (TENANT_TABLE_FIXTURES[table] === undefined) findings.push(`${table}: no isolation fixture, so the A/B matrix cannot attack it`);
   }
 
+  for (const table of Object.keys(NON_TENANT_TABLES)) {
+    const row = byTable.get(table);
+    if (row === undefined || table === "schema_migration") continue;
+    if (row.tenant_type !== null) findings.push(`${table}: listed as non-tenant but has a tenant_id column`);
+    if (row.relrowsecurity !== true || row.relforcerowsecurity !== true) findings.push(`${table}: row-level security is not enabled and forced`);
+  }
+
   const policies = await client.query(
     `SELECT tablename, policyname, permissive, roles::text[] AS roles, cmd, qual, with_check FROM pg_policies WHERE schemaname = 'public'`,
   );
@@ -205,6 +219,10 @@ export async function auditIsolationCatalog(client: SqlClient): Promise<string[]
     const roles = policy.roles as string[];
     if (roles.includes("public")) findings.push(`${name}: policy applies to PUBLIC`);
     if (roles.some((role) => !(APPLICATION_ROLES as readonly string[]).includes(role))) findings.push(`${name}: policy applies to an unreviewed role`);
+    if (NON_TENANT_POLICIES[name] !== undefined) {
+      if (policy.cmd !== NON_TENANT_POLICIES[name] || policy.with_check !== null) findings.push(`${name}: non-tenant policy changed`);
+      continue;
+    }
     if (RELAY_POLICIES[name] !== undefined) {
       if (policy.cmd !== RELAY_POLICIES[name] || !sameList(roles, ["sintius_dispatcher"])) findings.push(`${name}: relay policy changed`);
       continue;
@@ -254,6 +272,13 @@ export async function auditIsolationCatalog(client: SqlClient): Promise<string[]
       const want = [...(expected[table] ?? [])].sort();
       const have = [...(granted.get(table) ?? [])].sort();
       if (want.join(" ") !== have.join(" ")) findings.push(`${role} on ${table}: granted [${have.join(", ")}], reviewed [${want.join(", ")}]`);
+    }
+  }
+
+  for (const role of APPLICATION_ROLES) {
+    for (const table of Object.keys(NON_TENANT_TABLES)) {
+      const writes = [...(actual.get(role)?.get(table) ?? [])].filter((privilege) => privilege !== "SELECT");
+      if (writes.length > 0) findings.push(`${role} on ${table}: application roles may only read non-tenant tables`);
     }
   }
 

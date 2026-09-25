@@ -5,7 +5,8 @@
     "tenant_identity_provider",
     "tenant_role",
     "tenant_role_assignment",
-    "approval_policy"
+    "approval_policy",
+    "credential_revocation"
   ],
   "publishedEvents": [
     "tenant.provisioned.v1",

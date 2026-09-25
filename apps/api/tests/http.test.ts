@@ -26,17 +26,26 @@ const PROBLEM_JSON = "application/problem+json";
 const principals: Record<string, () => Readonly<AuthenticatedPrincipal>> = {
   "token-a": () => testPrincipal([A], { actor: "user_a" }),
   "token-ab": () => testPrincipal([A, B], { actor: "user_ab" }),
-  "token-operator": () => testPrincipal([], { actor: "platform_operator" }),
 };
 
-const authenticator: RequestAuthenticator = {
-  async authenticate({ authorization, correlationId }) {
-    const token = authorization?.replace(/^Bearer /, "") ?? "";
-    const principal = principals[token];
-    if (principal === undefined) throw problem({ code: "authentication_failed", detail: "Authentication is required.", correlation_id: correlationId });
-    return principal();
-  },
+const operators: Record<string, () => Readonly<AuthenticatedPrincipal>> = {
+  "token-operator": () => testPrincipal([], { actor: "platform_operator", audiences: ["sintius-platform"] }),
 };
+
+function acceptOnly(accepted: Record<string, () => Readonly<AuthenticatedPrincipal>>): RequestAuthenticator {
+  return {
+    async authenticate({ authorization, correlationId }) {
+      const token = authorization?.replace(/^Bearer /, "") ?? "";
+      const principal = Object.hasOwn(accepted, token) ? accepted[token] : undefined;
+      if (principal === undefined) throw problem({ code: "authentication_failed", detail: "Authentication is required.", correlation_id: correlationId });
+      return principal();
+    },
+  };
+}
+
+// Tenant routes and platform routes each accept only their own credentials (decision D11).
+const authenticator = acceptOnly(principals);
+const platformAuthenticator = acceptOnly(operators);
 
 function harness(options: { states?: Partial<Record<string, TenantOperationalState>>; proof?: FoundationProofCommand; tenants?: TenantLifecycleCommands } = {}) {
   const stateLookups: string[] = [];
@@ -52,6 +61,7 @@ function harness(options: { states?: Partial<Record<string, TenantOperationalSta
   const states = options.states ?? { [A]: "ACTIVE", [B]: "ACTIVE" };
   const app = buildApiServer({
     authenticator,
+    platformAuthenticator,
     tenantStates: {
       async stateOf(tenant) {
         stateLookups.push(tenant);
@@ -256,6 +266,21 @@ test("P0-003 tenant lifecycle routes use If-Match and ETag, and map a stale vers
   const suspended = await post(app, "/v1/platform/tenants/tenant_new/suspend", { reason: "Fraud review" }, { ...operator, "if-match": 'W/"2"' });
   assert.deepEqual([suspended.statusCode, suspended.json().state], [200, "SUSPENDED"]);
   assert.deepEqual((received.at(-1) as { input: unknown }).input, { tenantId: "tenant_new", expectedVersion: 2, reason: "Fraud review" });
+
+  // D11: a tenant user's credential never reaches a platform route, and an operator's never reaches a tenant route.
+  const tenantOnPlatform = await post(app, "/v1/platform/tenants", { tenant_id: "tenant_x", display_name: "X", initial_administrator_actor_id: "admin_x" }, {
+    authorization: "Bearer token-a", "idempotency-key": "8f14e45f-ceea-467f-a0e6-000000000009",
+  });
+  assert.deepEqual([tenantOnPlatform.statusCode, tenantOnPlatform.json().code], [401, "authentication_failed"]);
+  const operatorOnTenant = await post(app, "/v1/foundation/proofs", { label: "x" }, operator);
+  assert.deepEqual([operatorOnTenant.statusCode, operatorOnTenant.json().code], [401, "authentication_failed"]);
+});
+
+test("D11 platform routes cannot be mounted without a platform authenticator", () => {
+  assert.throws(
+    () => buildApiServer({ authenticator, tenantStates: { stateOf: async () => "ACTIVE" }, tenantCommands: {} as TenantLifecycleCommands }),
+    /platform authenticator/,
+  );
 });
 
 test("the bearer adapter extracts only a well-formed credential and delegates every check", async () => {

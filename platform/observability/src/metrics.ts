@@ -12,6 +12,7 @@ interface Instruments {
   readonly idempotency: Counter;
   readonly auditWriteFailures: Counter;
   readonly queueOutcomes: Counter;
+  readonly authentication: Counter;
 }
 
 const byProvider = new WeakMap<MeterProvider, Instruments>();
@@ -26,6 +27,7 @@ function instruments(): Instruments {
       idempotency: meter.createCounter("sintius.idempotency.requests", { description: "Idempotent command executions by outcome." }),
       auditWriteFailures: meter.createCounter("sintius.audit.write_failures", { description: "Audit appends that failed and rolled their command back." }),
       queueOutcomes: meter.createCounter("sintius.queue.outcomes", { description: "Outbox and delivery hand-over outcomes by queue." }),
+      authentication: meter.createCounter("sintius.authentication.outcomes", { description: "Authentication attempts by kind, outcome, reason class and provider." }),
     };
     byProvider.set(provider, found);
   }
@@ -44,6 +46,13 @@ export const telemetryMetrics = Object.freeze({
   },
   auditWriteFailure(action: string): void {
     instruments().auditWriteFailures.add(1, safeAttributes({ "sintius.audit.action": action }));
+  },
+  /** One attempt; `reason` is a failure class (or "none"), `provider` the configured provider ID. Never the credential. */
+  authentication(kind: string, outcome: "succeeded" | "failed", reason: string, provider: string): void {
+    instruments().authentication.add(
+      1,
+      safeAttributes({ "sintius.auth.kind": kind, "sintius.auth.outcome": outcome, "sintius.auth.reason": reason, "sintius.auth.provider": provider }),
+    );
   },
   queueOutcome(queue: string, outcome: QueueOutcome, count: number): void {
     if (count > 0) instruments().queueOutcomes.add(count, safeAttributes({ "sintius.queue.name": queue, "sintius.queue.outcome": outcome }));

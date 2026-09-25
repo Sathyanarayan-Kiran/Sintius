@@ -33,6 +33,8 @@ export interface VerifiedCredentialClaims {
   readonly scopes: readonly string[];
   readonly expiresAt: string;
   readonly notBefore?: string;
+  /** Platform roles asserted by the platform identity provider (decision D11); ignored for tenant sessions. */
+  readonly platformRoles?: readonly string[];
 }
 
 export interface CredentialVerifier {
@@ -41,6 +43,42 @@ export interface CredentialVerifier {
 }
 
 export interface CredentialStatusStore {
-  /** Checked on every authentication so revocation affects the next request. */
-  isRevoked(credentialId: string): Promise<boolean>;
+  /** Checked on every authentication so revocation affects the next request. Token IDs are unique per issuer. */
+  isRevoked(credential: { readonly issuer: string; readonly credentialId: string }): Promise<boolean>;
+}
+
+export type AuthenticationKind = "interactive" | "workload" | "platform";
+
+/** Why an authentication failed, as a low-cardinality class. Never the token or the library error. */
+export type AuthenticationFailureReason =
+  | "malformed_request"
+  | "unknown_provider"
+  | "credential_invalid"
+  | "claims_invalid"
+  | "revoked"
+  | "mfa_required"
+  | "no_tenant_membership"
+  | "tenant_claims_on_platform_token"
+  | "scope_denied"
+  | "error";
+
+/**
+ * A security fact for one authentication attempt (P0-004). It identifies the provider, the class of
+ * outcome and, once the signature has been verified, the subject and token ID. It never carries the
+ * credential itself, its claims or a verifier error message.
+ */
+export interface AuthenticationFact {
+  readonly kind: AuthenticationKind;
+  readonly outcome: "succeeded" | "failed";
+  readonly reason?: AuthenticationFailureReason;
+  readonly providerId: string;
+  readonly mechanism?: AuthenticationMechanism;
+  readonly actorId?: string;
+  readonly credentialId?: string;
+  readonly correlationId: string;
+  readonly occurredAt: string;
+}
+
+export interface AuthenticationFactSink {
+  record(fact: Readonly<AuthenticationFact>): void;
 }

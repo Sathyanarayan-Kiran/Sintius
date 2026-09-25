@@ -79,8 +79,8 @@ class FakeVerifier implements CredentialVerifier {
 
 class MemoryCredentialStatus implements CredentialStatusStore {
   readonly revoked = new Set<string>();
-  async isRevoked(credentialId: string): Promise<boolean> {
-    return this.revoked.has(credentialId);
+  async isRevoked(credential: { readonly issuer: string; readonly credentialId: string }): Promise<boolean> {
+    return this.revoked.has(credential.credentialId);
   }
 }
 
