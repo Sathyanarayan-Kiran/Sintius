@@ -60,6 +60,8 @@ test("TC-001-05-01 the problem catalog is a stable published contract", () => {
     ["approval_expired", 409, "Approval expired"],
     ["approval_version_conflict", 409, "Approval version conflict"],
     ["approval_target_mismatch", 409, "Approval target mismatch"],
+    ["approval_approver_not_eligible", 403, "Approver not eligible"],
+    ["last_administrator_protected", 409, "Last administrator protected"],
     ["idempotency_key_required", 400, "Idempotency key required"],
     ["idempotency_key_invalid", 400, "Idempotency key invalid"],
     ["idempotency_key_reused_with_different_payload", 409, "Idempotency key reused with different payload"],

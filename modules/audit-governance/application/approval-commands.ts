@@ -131,6 +131,11 @@ export function createApprovalCommands(dependencies: {
     const now = dependencies.clock();
     return dependencies.persistence.runInTransaction(scopeOf(), async (unitOfWork) => {
       const current = await load(unitOfWork, input.approvalId);
+      // Evaluated now, not at proposal time, so a revoked role cannot still approve.
+      const approverPermissions: string[] = [];
+      for (const requirement of current.approverRequirements) {
+        if (await dependencies.authorizer.hasPermission(requirement.permission)) approverPermissions.push(requirement.permission);
+      }
       const next = decideApproval(
         current,
         {
@@ -138,6 +143,7 @@ export function createApprovalCommands(dependencies: {
           decision: input.decision,
           expectedVersion: input.expectedVersion,
           target: input.target,
+          approverPermissions,
           ...(input.reason === undefined ? {} : { reason: input.reason }),
         },
         now,

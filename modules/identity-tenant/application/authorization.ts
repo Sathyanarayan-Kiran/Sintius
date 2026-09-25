@@ -4,6 +4,7 @@ import { problem } from "../../../platform/problem-model/src/index.ts";
 import { actorId, currentTenantContext } from "../../../platform/tenant-context/src/index.ts";
 import { assertKnownPermission, constraintsSatisfied, effectivePermissions, type ConstraintValue } from "../domain/authorization.ts";
 import type { PermissionConstraintStore, PermissionGrantStore, SecurityPersistence } from "./authorization-ports.ts";
+import type { DefaultRoleCode } from "./ports.ts";
 
 /**
  * Tenant-scoped, deny-by-default permission checks. Tenant and actor come only from the trusted
@@ -46,6 +47,9 @@ export function createTenantAuthorizer(dependencies: { readonly grants: Permissi
   return Object.freeze({ hasPermission, assertPermission });
 }
 
+/** The default administrator role created with every tenant. */
+const ADMINISTRATOR_ROLE: DefaultRoleCode = "tenant_administrator";
+
 /** Evidence fields allowed in role-assignment audit snapshots. */
 export const ROLE_AUDIT_FIELDS = Object.freeze({ RoleAssignment: Object.freeze(["role_code"]) });
 
@@ -87,8 +91,19 @@ export function createRoleAdministration(dependencies: {
         if (role === undefined || role.status !== "active") {
           throw problem({ code: "role_not_found", detail: "The role does not exist.", correlation_id: context.correlationId });
         }
-        if (kind === "assigned") await unitOfWork.assignments.insert(context.tenantId, target, input.roleCode);
-        else await unitOfWork.assignments.remove(context.tenantId, target, input.roleCode);
+        if (kind === "assigned") {
+          await unitOfWork.assignments.insert(context.tenantId, target, input.roleCode);
+        } else {
+          // Decision D3: nobody may remove the tenant's last administrator, or the tenant is locked out.
+          if (input.roleCode === ADMINISTRATOR_ROLE && (await unitOfWork.assignments.countActiveHolders(context.tenantId, input.roleCode)) <= 1) {
+            throw problem({
+              code: "last_administrator_protected",
+              detail: "The tenant's last administrator cannot be removed. Assign another administrator first.",
+              correlation_id: context.correlationId,
+            });
+          }
+          await unitOfWork.assignments.remove(context.tenantId, target, input.roleCode);
+        }
 
         await dependencies.audit.recordForCurrentContext(unitOfWork.audit, {
           action: kind === "assigned" ? "role.assigned" : "role.revoked",

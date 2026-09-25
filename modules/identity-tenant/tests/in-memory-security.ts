@@ -70,6 +70,11 @@ export class InMemorySecurityStore implements PermissionGrantStore, PermissionCo
         remove: async (tenant, actor, code) => {
           if (!staged.assignments.delete(key(tenant, actor, code))) throw problem({ code: "role_assignment_not_found", detail: "Not assigned." });
         },
+        countActiveHolders: async (tenant, code) =>
+          [...staged.assignments].filter((entry) => {
+            const [entryTenant, , entryRole] = entry.split("|").map(decodeURIComponent);
+            return entryTenant === tenant && entryRole === code;
+          }).length,
       },
       audit: {
         append: async (record) => {

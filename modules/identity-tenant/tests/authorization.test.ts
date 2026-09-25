@@ -201,3 +201,23 @@ test("ABAC narrows a grant but never creates one, and an evaluator failure denie
     await assert.rejects(authorizer.assertPermission("payments:payment:refund", { amount_minor: 1 }), denied("permission_denied"));
   });
 });
+
+test("D3 the last tenant administrator cannot be removed; a second administrator makes removal possible", async () => {
+  const { store, roleAdmin } = fixture();
+  // A security officer can assign roles without being a tenant administrator themselves.
+  store.seedRole(A, { roleCode: "security_officer", permissions: ["tenant:role:assign"], status: "active" });
+  store.seedAssignment(A, actorId("officer_1"), "security_officer");
+
+  await runWithTenantContext(contextFor(A, "officer_1"), async () => {
+    await assert.rejects(roleAdmin.revokeRole({ targetActorId: "admin_1", roleCode: "tenant_administrator" }), denied("last_administrator_protected"));
+  });
+  assert.equal(store.committed.audit.length, 0, "the refused revocation left no audit or event");
+
+  await runWithTenantContext(contextFor(A, "officer_1"), async () => {
+    await roleAdmin.assignRole({ targetActorId: "admin_2", roleCode: "tenant_administrator" });
+    await roleAdmin.revokeRole({ targetActorId: "admin_1", roleCode: "tenant_administrator" });
+    await assert.rejects(roleAdmin.revokeRole({ targetActorId: "admin_2", roleCode: "tenant_administrator" }), denied("last_administrator_protected"));
+    await roleAdmin.revokeRole({ targetActorId: "maker_1", roleCode: "pricing_manager" });
+  });
+  assert.deepEqual(store.committed.audit.map((row) => row.action), ["role.assigned", "role.revoked", "role.revoked"], "other roles can still be emptied");
+});

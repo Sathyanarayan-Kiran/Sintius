@@ -15,6 +15,7 @@ const SUITES = {
       "platform/outbox/tests/postgres-outbox.test.ts",
       "platform/outbox/tests/postgres-delivery.test.ts",
       "tests/integration/phase0-release-gate.test.ts",
+      "tests/integration/roles-approvals.test.ts",
       "apps/api/tests/postgres-http.test.ts",
     ],
     flags: ["--test-concurrency=1"],

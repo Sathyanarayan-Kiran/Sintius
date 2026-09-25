@@ -44,13 +44,18 @@ function contextFor(
 /** Grants by actor and tenant, standing in for the tenant authorizer that is composed at the app root. */
 function authorizerWith(grants: Record<string, readonly string[]>): ApprovalAuthorizer & { calls: string[] } {
   const calls: string[] = [];
+  const holds = (permission: string) => {
+    const context = currentTenantContext();
+    return (grants[`${context.tenantId}:${context.actorId}`] ?? []).includes(permission);
+  };
   return {
     calls,
     async assertPermission(permission: string) {
       calls.push(permission);
-      const context = currentTenantContext();
-      const actor = grants[`${context.tenantId}:${context.actorId}`] ?? [];
-      if (!actor.includes(permission)) throw problem({ code: "permission_denied", detail: "denied" });
+      if (!holds(permission)) throw problem({ code: "permission_denied", detail: "denied" });
+    },
+    async hasPermission(permission: string) {
+      return holds(permission);
     },
   };
 }
@@ -231,4 +236,52 @@ test("a failed audit write leaves an approval pending and unchanged", async () =
   assert.equal(store.committed.approvals.get(`tenant_A|${request.id}`)?.status, "PENDING");
   assert.equal(store.committed.audit.length, 1);
   assert.equal(store.committed.outbox.length, 1);
+});
+
+test("D4 named approver requirements: Product and Finance must each approve; one person cannot satisfy both", () => {
+  const PRODUCT = "pricing:rate_card:activate";
+  const FINANCE = "billing:invoice:finalize";
+  const governed = policy({ approverRequirements: [{ permission: PRODUCT, count: 1 }, { permission: FINANCE, count: 1 }] });
+  const request = proposeApproval({ ...target, id: "apr_d4", policy: governed, makerId: actorId("maker_1") }, NOW);
+  assert.equal(request.requiredApprovals, 2);
+  const decideAs = (current: typeof request, approver: string, permissions: readonly string[], kind: "approve" | "reject" = "approve") =>
+    decideApproval(current, { approverId: actorId(approver), decision: kind, expectedVersion: current.version, target, approverPermissions: permissions }, NOW);
+
+  assert.throws(() => decideAs(request, "checker_1", []), denied("approval_approver_not_eligible"), "no required permission, no vote");
+  const afterDual = decideAs(request, "both_hats", [PRODUCT, FINANCE]);
+  assert.deepEqual([afterDual.status, afterDual.decisions[0]!.creditedPermission], ["PENDING", PRODUCT], "a dual-role approver counts once, toward the first unmet requirement");
+  assert.throws(() => decideAs(afterDual, "product_2", [PRODUCT]), denied("approval_approver_not_eligible"), "Product is already satisfied");
+  const approved = decideAs(afterDual, "finance_1", [FINANCE]);
+  assert.deepEqual([approved.status, approved.decisions.map((decision) => decision.creditedPermission)], ["APPROVED", [PRODUCT, FINANCE]]);
+
+  const rejected = decideAs(request, "finance_1", [FINANCE], "reject");
+  assert.equal(rejected.status, "REJECTED", "any qualifying approver may reject");
+
+  for (const approverRequirements of [[{ permission: PRODUCT, count: 0 }], [{ permission: PRODUCT, count: 1 }, { permission: PRODUCT, count: 1 }], [{ permission: " ", count: 1 }]]) {
+    assert.throws(() => proposeApproval({ ...target, id: "apr_bad", policy: policy({ approverRequirements }), makerId: actorId("maker_1") }, NOW), denied("invalid_trusted_context"));
+  }
+});
+
+test("D4 the handler credits decisions from the approver's live permissions", async () => {
+  const PRODUCT = "pricing:rate_card:activate";
+  const FINANCE = "billing:invoice:finalize";
+  const store = new InMemoryApprovalStore();
+  store.seedPolicy(policy({ approverRequirements: [{ permission: PRODUCT, count: 1 }, { permission: FINANCE, count: 1 }] }));
+  const authorizer = authorizerWith({
+    "tenant_A:maker_1": ["approval:request:propose"],
+    "tenant_A:product_1": ["approval:request:decide", PRODUCT],
+    "tenant_A:finance_1": ["approval:request:decide", FINANCE],
+    "tenant_A:decider_only": ["approval:request:decide"],
+  });
+  let ids = 0;
+  const audit = createAuditRecorder({ policy: createAuditPolicy(APPROVAL_AUDIT_FIELDS), clock: () => NOW, newId: () => `aud_d4_${++ids}` });
+  const commands = createApprovalCommands({ persistence: store, authorizer, audit, clock: () => NOW, newApprovalId: () => `apr_d4_${++ids}`, newEventId: () => `evt_d4_${++ids}` });
+  const proposed = await runWithTenantContext(contextFor(A, "maker_1"), () => commands.proposeApproval(target));
+  await runWithTenantContext(contextFor(A, "decider_only"), async () => {
+    await assert.rejects(commands.decideApproval(decision(proposed.id)), denied("approval_approver_not_eligible"));
+  });
+  const afterProduct = await runWithTenantContext(contextFor(A, "product_1"), () => commands.decideApproval(decision(proposed.id)));
+  assert.equal(afterProduct.status, "PENDING");
+  const afterFinance = await runWithTenantContext(contextFor(A, "finance_1"), () => commands.decideApproval(decision(proposed.id, afterProduct.version)));
+  assert.equal(afterFinance.status, "APPROVED");
 });

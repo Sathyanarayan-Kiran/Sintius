@@ -9,6 +9,8 @@ import type { ApprovalPolicy, ApprovalRequest } from "../domain/approval.ts";
  */
 export interface ApprovalAuthorizer {
   assertPermission(permission: string): Promise<void>;
+  /** Live check used to credit a decision toward a policy's approver requirements (decision D4). */
+  hasPermission(permission: string): Promise<boolean>;
 }
 
 /** Policies are tenant configuration owned by Identity & Tenant; this module only reads them. */
