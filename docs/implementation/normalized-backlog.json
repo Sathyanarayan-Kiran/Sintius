@@ -205,8 +205,8 @@
             "BL-001-03"
           ],
           "implementation": "in_progress",
-          "progress": 75,
-          "notes": "Outbox writer/store/publisher/inbox ports, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer are implemented. Mutation/outbox atomicity is passing on PostgreSQL through tenant provisioning and the active-tenant proof. A PostgreSQL dispatcher store (migration 005, dedicated NOBYPASSRLS sintius_dispatcher role with SELECT and column-limited UPDATE only) leases stream heads with FOR UPDATE SKIP LOCKED; integration tests prove head-of-stream order, backoff blocking only its own stream, six concurrent workers publishing 96 events exactly once in per-stream order with no stream ever having two events in flight, expired-lease re-grant with stale-worker outcomes rejected, and an audited operator skip/requeue that unblocks a dead-lettered stream and rolls back with a failed audit write. A forced-RLS inbox_record table and PostgreSQL inbox persistence prove per-consumer/per-tenant deduplication, rollback with a failing handler and one effect under eight concurrent redeliveries; the P0-010 release-gate test dispatches with a broker refusal and retry and deduplicates a full redelivery. Crash/replay stays partial because there is no real broker or process-kill chaos run. Remaining: broker selection and adapter, dispatcher runtime loop/lease renewal, envelope schema validation before publish, aggregate_version gap detection, metrics export and outbox/inbox retention.",
+          "progress": 85,
+          "notes": "Outbox writer/store/publisher/inbox ports, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer are implemented. Mutation/outbox atomicity is passing on PostgreSQL. The PostgreSQL dispatcher store (sintius_dispatcher role, FOR UPDATE SKIP LOCKED on stream heads) is proven for ordering, a six-worker race, lease expiry and audited dead-letter skip/requeue. Decision D14 adds the interim transport within ADR-009: migration 006 event_delivery, a PostgresEventPublisher that fans each event out once per subscribed consumer (exact-type routes, idempotent on republish, LISTEN/NOTIFY wake-ups) and createDeliveryWorker, which reuses the dispatcher on a per-consumer queue. PostgreSQL tests prove two consumers with two replicas each apply every event once in per-aggregate order, a consumer dead letter blocks only that consumer stream while other consumers keep receiving (D1), operator resolution is scoped to its own consumer and audited, and only the relay role can touch deliveries. TC-001-03-02 is passing: a worker that crashes after the handler committed leaves the delivery leased; after lease expiry another worker redelivers it and the PostgreSQL inbox makes it a no-op. Remaining: a continuous dispatcher/worker runtime with lease renewal, envelope schema validation before publish, aggregate_version gap detection, metrics export (D15), outbox/delivery/inbox retention, and Kafka-compatible cutover triggers from SPIKE-05.",
           "acceptance": [
             "A domain mutation and its outbox record commit or roll back in one transaction.",
             "After a dispatcher failure, the event is retried and consumers deduplicate it by event ID."
@@ -222,7 +222,7 @@
               "id": "TC-001-03-02",
               "name": "Crash-after-publish replay and deduplication",
               "type": "chaos",
-              "status": "partial"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E001",

@@ -45,7 +45,7 @@ function iso(value: unknown): string {
   return parsed.toISOString();
 }
 
-function entryFrom(row: Record<string, unknown>): Readonly<OutboxEntry> {
+function entryFrom(row: Record<string, unknown>, sql: QueueSql): Readonly<OutboxEntry> {
   const optional = (key: string, field: string, map: (value: unknown) => unknown = String) =>
     row[key] === null || row[key] === undefined ? {} : { [field]: map(row[key]) };
   return Object.freeze({
@@ -55,11 +55,11 @@ function entryFrom(row: Record<string, unknown>): Readonly<OutboxEntry> {
     status: String(row.status) as OutboxStatus,
     attempts: Number(row.attempts),
     nextAttemptAt: iso(row.next_attempt_at),
-    appendedAt: iso(row.appended_at),
+    appendedAt: iso(row[sql.queuedAt]),
     ...optional("leased_by", "leasedBy"),
     ...optional("lease_expires_at", "leaseExpiresAt", iso),
     ...optional("last_error", "lastError"),
-    ...optional("published_at", "publishedAt", iso),
+    ...optional(sql.doneAt, "publishedAt", iso),
     ...optional("resolution", "resolution", (value) => Object.freeze(structuredClone(value))),
   }) as Readonly<OutboxEntry>;
 }
@@ -96,10 +96,43 @@ async function bindTenant(client: SqlClient, boundTenantId: string): Promise<voi
 }
 
 /**
- * Dispatcher-side outbox store, connected as the `sintius_dispatcher` workload role. Each call is a
- * single statement, so leasing is atomic without an explicit transaction.
+ * Which queue a store works on: the producers' outbox, or one consumer's deliveries (decision D14).
+ * Table and column names come from this fixed descriptor, never from caller input.
+ */
+export type QueueSelector = { readonly kind: "outbox" } | { readonly kind: "delivery"; readonly consumer: string };
+
+const CONSUMER_PATTERN = /^[a-z][a-z0-9_.:-]{0,63}$/;
+
+interface QueueSql {
+  readonly table: "outbox_event" | "event_delivery";
+  readonly done: "published" | "delivered";
+  readonly doneAt: "published_at" | "delivered_at";
+  readonly queuedAt: "appended_at" | "enqueued_at";
+  readonly consumer: string | undefined;
+}
+
+function queueSql(queue: QueueSelector = { kind: "outbox" }): QueueSql {
+  if (queue.kind === "outbox") return { table: "outbox_event", done: "published", doneAt: "published_at", queuedAt: "appended_at", consumer: undefined };
+  if (!CONSUMER_PATTERN.test(queue.consumer)) throw new TypeError("Consumer name must be a lowercase identifier.");
+  return { table: "event_delivery", done: "delivered", doneAt: "delivered_at", queuedAt: "enqueued_at", consumer: queue.consumer };
+}
+
+/** `AND <alias>.consumer = $n` for delivery queues; empty for the outbox. */
+function consumerScope(sql: QueueSql, alias: string, parameter: number): string {
+  return sql.consumer === undefined ? "" : ` AND ${alias}.consumer = $${parameter}`;
+}
+
+function withConsumer(sql: QueueSql, parameters: unknown[]): unknown[] {
+  return sql.consumer === undefined ? parameters : [...parameters, sql.consumer];
+}
+
+/**
+ * Relay-side queue store, connected as the `sintius_dispatcher` workload role. Each call is a
+ * single statement, so leasing is atomic without an explicit transaction. The same store serves
+ * the outbox (producers to transport) and each consumer's deliveries (transport to consumer).
  *
- * Leasing only considers the head of each (tenant, aggregate type, aggregate id) stream: an entry is
+ * Leasing only considers the head of each stream: (tenant, aggregate type, aggregate id), plus the
+ * consumer for deliveries, so one consumer's dead letter never blocks another consumer. An entry is
  * eligible when no earlier entry of its stream is unfinished. `FOR UPDATE SKIP LOCKED` lets
  * concurrent workers take disjoint heads; a head another worker just leased fails the re-check on
  * the committed row and is left alone. Order within a stream is `entry_id`, which follows commit
@@ -107,8 +140,10 @@ async function bindTenant(client: SqlClient, boundTenantId: string): Promise<voi
  */
 export class PostgresOutboxStore implements OutboxStore {
   readonly #pool;
+  readonly #sql: QueueSql;
 
-  constructor(options: PoolOptions = {}) {
+  constructor(options: PoolOptions & { readonly queue?: QueueSelector } = {}) {
+    this.#sql = queueSql(options.queue);
     this.#pool = new Pool({
       connectionString: options.connectionString ?? process.env.SINTIUS_DISPATCHER_DATABASE_URL ?? DISPATCHER_URL,
       max: options.maxConnections ?? 5,
@@ -117,25 +152,26 @@ export class PostgresOutboxStore implements OutboxStore {
 
   async leaseBatch(request: Readonly<LeaseRequest>): Promise<readonly Readonly<OutboxEntry>[]> {
     if (!Number.isInteger(request.limit) || request.limit < 1) return [];
+    const sql = this.#sql;
     const result = await this.#pool.query(
       `WITH candidate AS (
          SELECT head.entry_id
-           FROM outbox_event head
+           FROM ${sql.table} head
           WHERE ((head.status = 'pending' AND head.next_attempt_at <= $2::timestamptz)
-             OR (head.status = 'leased' AND head.lease_expires_at <= $2::timestamptz))
+             OR (head.status = 'leased' AND head.lease_expires_at <= $2::timestamptz))${consumerScope(sql, "head", 5)}
             AND NOT EXISTS (
                   SELECT 1
-                    FROM outbox_event earlier
+                    FROM ${sql.table} earlier
                    WHERE earlier.tenant_id = head.tenant_id
                      AND earlier.aggregate_type = head.aggregate_type
-                     AND earlier.aggregate_id = head.aggregate_id
+                     AND earlier.aggregate_id = head.aggregate_id${sql.consumer === undefined ? "" : "\n                     AND earlier.consumer = head.consumer"}
                      AND earlier.entry_id < head.entry_id
-                     AND earlier.status NOT IN ('published', 'skipped'))
+                     AND earlier.status NOT IN ('${sql.done}', 'skipped'))
           ORDER BY head.entry_id
           LIMIT $4
           FOR UPDATE OF head SKIP LOCKED
        )
-       UPDATE outbox_event leased
+       UPDATE ${sql.table} leased
           SET status = 'leased',
               attempts = leased.attempts + 1,
               leased_by = $1,
@@ -143,18 +179,19 @@ export class PostgresOutboxStore implements OutboxStore {
          FROM candidate
         WHERE leased.entry_id = candidate.entry_id
        RETURNING leased.*`,
-      [request.workerId, request.now, request.leaseSeconds, request.limit],
+      withConsumer(sql, [request.workerId, request.now, request.leaseSeconds, request.limit]),
     );
-    return result.rows.map(entryFrom).sort((left, right) => left.sequence - right.sequence);
+    return result.rows.map((row) => entryFrom(row, sql)).sort((left, right) => left.sequence - right.sequence);
   }
 
   async markPublished(input: { readonly entryId: string; readonly workerId: string; readonly now: string }): Promise<boolean> {
     if (!ENTRY_ID_PATTERN.test(input.entryId)) return false;
+    const sql = this.#sql;
     const result = await this.#pool.query(
-      `UPDATE outbox_event
-          SET status = 'published', published_at = $3, leased_by = NULL, lease_expires_at = NULL
-        WHERE entry_id = $1 AND status = 'leased' AND leased_by = $2`,
-      [input.entryId, input.workerId, input.now],
+      `UPDATE ${sql.table}
+          SET status = '${sql.done}', ${sql.doneAt} = $3, leased_by = NULL, lease_expires_at = NULL
+        WHERE entry_id = $1 AND status = 'leased' AND leased_by = $2${consumerScope(sql, sql.table, 4)}`,
+      withConsumer(sql, [input.entryId, input.workerId, input.now]),
     );
     return result.rowCount === 1;
   }
@@ -167,15 +204,16 @@ export class PostgresOutboxStore implements OutboxStore {
     readonly retryAt?: string;
   }): Promise<boolean> {
     if (!ENTRY_ID_PATTERN.test(input.entryId)) return false;
+    const sql = this.#sql;
     const result = await this.#pool.query(
-      `UPDATE outbox_event
+      `UPDATE ${sql.table}
           SET status = CASE WHEN $4::timestamptz IS NULL THEN 'dead' ELSE 'pending' END,
               next_attempt_at = COALESCE($4::timestamptz, next_attempt_at),
               last_error = $3,
               leased_by = NULL,
               lease_expires_at = NULL
-        WHERE entry_id = $1 AND status = 'leased' AND leased_by = $2`,
-      [input.entryId, input.workerId, input.error.slice(0, MAX_ERROR_LENGTH), input.retryAt ?? null],
+        WHERE entry_id = $1 AND status = 'leased' AND leased_by = $2${consumerScope(sql, sql.table, 5)}`,
+      withConsumer(sql, [input.entryId, input.workerId, input.error.slice(0, MAX_ERROR_LENGTH), input.retryAt ?? null]),
     );
     return result.rowCount === 1;
   }
@@ -190,22 +228,24 @@ export class PostgresOutboxStore implements OutboxStore {
   }): Promise<DeadLetterInfo | undefined> {
     const client = (await this.#pool.connect()) as SqlClient;
     try {
-      return await resolveDeadLetterWith(client, input);
+      return await resolveDeadLetterWith(client, input, this.#sql);
     } finally {
       client.release();
     }
   }
 
   async stats(now: string): Promise<OutboxStats> {
+    const sql = this.#sql;
     const result = await this.#pool.query(
       `SELECT count(*) FILTER (WHERE status = 'pending')::int AS pending,
               count(*) FILTER (WHERE status = 'leased')::int AS leased,
               count(*) FILTER (WHERE status = 'dead')::int AS dead_letter,
               count(DISTINCT jsonb_build_array(tenant_id, aggregate_type, aggregate_id)) FILTER (WHERE status = 'dead')::int AS blocked_streams,
-              min(appended_at) FILTER (WHERE status = 'dead') AS oldest_dead,
-              min(appended_at) AS oldest_unpublished
-         FROM outbox_event
-        WHERE status NOT IN ('published', 'skipped')`,
+              min(${sql.queuedAt}) FILTER (WHERE status = 'dead') AS oldest_dead,
+              min(${sql.queuedAt}) AS oldest_unpublished
+         FROM ${sql.table}
+        WHERE status NOT IN ('${sql.done}', 'skipped')${consumerScope(sql, sql.table, 1)}`,
+      withConsumer(sql, []),
     );
     const row = result.rows[0]!;
     return Object.freeze({
@@ -232,18 +272,19 @@ async function resolveDeadLetterWith(
     readonly reason: string;
     readonly now: string;
   },
+  sql: QueueSql,
 ): Promise<DeadLetterInfo | undefined> {
   if (!ENTRY_ID_PATTERN.test(input.entryId) || (input.action !== "requeue" && input.action !== "skip")) return undefined;
   const resolution = { action: input.action, operatorId: input.operatorId, reason: input.reason, resolvedAt: input.now };
   const result = await client.query(
-    `UPDATE outbox_event
+    `UPDATE ${sql.table}
         SET status = CASE WHEN $2 = 'skip' THEN 'skipped' ELSE 'pending' END,
             attempts = CASE WHEN $2 = 'skip' THEN attempts ELSE 0 END,
             next_attempt_at = CASE WHEN $2 = 'skip' THEN next_attempt_at ELSE $3::timestamptz END,
             resolution = $4::jsonb
-      WHERE entry_id = $1 AND status = 'dead'
+      WHERE entry_id = $1 AND status = 'dead'${consumerScope(sql, sql.table, 5)}
       RETURNING entry_id, tenant_id, event_id, event_type, aggregate_type, aggregate_id`,
-    [input.entryId, input.action, input.now, JSON.stringify(resolution)],
+    withConsumer(sql, [input.entryId, input.action, input.now, JSON.stringify(resolution)]),
   );
   if (result.rowCount !== 1) return undefined;
   const row = result.rows[0]!;
@@ -288,8 +329,10 @@ function boundAuditWriter(client: SqlClient, boundTenant: () => TenantId | undef
  */
 export class PostgresDeadLetterPersistence implements DeadLetterPersistence {
   readonly #pool;
+  readonly #sql: QueueSql;
 
-  constructor(options: PoolOptions = {}) {
+  constructor(options: PoolOptions & { readonly queue?: QueueSelector } = {}) {
+    this.#sql = queueSql(options.queue);
     this.#pool = new Pool({
       connectionString: options.connectionString ?? process.env.SINTIUS_DISPATCHER_DATABASE_URL ?? DISPATCHER_URL,
       max: options.maxConnections ?? 2,
@@ -309,7 +352,7 @@ export class PostgresDeadLetterPersistence implements DeadLetterPersistence {
             if (!isOpen()) throw new Error("PostgreSQL unit of work used outside its transaction.");
             if (resolved) throw new Error("One dead-letter resolution per transaction.");
             resolved = true;
-            const info = await resolveDeadLetterWith(client, input);
+            const info = await resolveDeadLetterWith(client, input, this.#sql);
             if (info !== undefined) {
               await bindTenant(client, info.tenantId);
               bound = info.tenantId;
