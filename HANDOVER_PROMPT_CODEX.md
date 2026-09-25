@@ -13,7 +13,7 @@ You are continuing implementation of the **Sintius AI-native Subscription and Re
 - run the full gate before you report;
 - report only what you actually proved.
 
-Phase 0 (the platform foundation) is exited: its exit package (section 6, PR 5) is implemented, its proposed deferrals confirmed and its merge approved by the Product Owner. US-BL-017-03 stays `in_progress` (section 4) pending a deployed environment to run it against; the identity-provider product choice does not block Phase 0. Next: D7 UUIDv7 migration, then Phase 1 (section 6).
+Phase 0 (the platform foundation) is exited: its exit package (section 6, PR 5) is implemented, its proposed deferrals confirmed and its merge approved by the Product Owner. US-BL-017-03 stays `in_progress` (section 4) pending a deployed environment to run it against; the identity-provider product choice does not block Phase 0. D7's Phase 1 (the UUIDv7 generator and its benchmark) is done; section 5 item 5 and `docs/implementation/spikes/SPIKE-03/migration-plan.md` have the rest. Next: Phase 1 billing domains, adopting UUIDv7 (D7 Phase 2) for every new table from its first migration.
 
 ## 1. Read first (in this order)
 
@@ -123,7 +123,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 - `npm run test:postgres` runs the PostgreSQL suite. Its files are listed explicitly in `tools/test/run-suite.mjs` and run one at a time, because they share a database. Add each new database test file there.
 - `npm run check` runs the whole local gate: typecheck, architecture, roadmap, requirement coverage, unit tests and the PostgreSQL suite.
 - `npm run check:evidence` re-verifies evidence claims against the TAP reports. To run it locally, first run the suites with `SINTIUS_TEST_REPORT_DIR=reports`.
-- **Baseline at handover:** 184 unit and 39 PostgreSQL tests, all passing (223 in total). Run `npm run check` before editing and confirm this baseline. `npm run check:evidence` and `npm run check:pipeline-controls` (both CI-only, requiring `SINTIUS_TEST_REPORT_DIR`) additionally re-verify implementation evidence and the Definition of Done / test strategy gates against the run's TAP reports.
+- **Baseline at handover:** 192 unit and 39 PostgreSQL tests, all passing (231 in total). Run `npm run check` before editing and confirm this baseline. `npm run check:evidence` and `npm run check:pipeline-controls` (both CI-only, requiring `SINTIUS_TEST_REPORT_DIR`) additionally re-verify implementation evidence and the Definition of Done / test strategy gates against the run's TAP reports.
 
 **CI**
 
@@ -197,6 +197,10 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 - BigInt fixed-point `Decimal` (38 digits, scale 18) and minor-unit `Money`.
 - HALF_UP rounding, ACTUAL_DAYS proration and largest-remainder allocation (D5, D6).
 - `decimal.js` is a test oracle only.
+
+**platform/id**
+- `generateUuidV7` (D7, RFC 9562): a time-ordered UUID for B-tree insert locality; injectable clock and randomness for deterministic tests. `isUuidV7`/`timestampOfUuidV7` for validation and inspection.
+- Not yet wired into any table. See `docs/implementation/spikes/SPIKE-03/migration-plan.md` for adoption phasing.
 
 **modules/identity-tenant**
 - Tenant aggregate and idempotent lifecycle commands (provision, activate, suspend, reactivate, close) on PostgreSQL.
@@ -287,7 +291,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
    - US-BL-002-02 (IdP product choice, a revocation feed or command, and the admin-web login flow) and US-BL-002-04 (credential issuance/rotation at the IdP, mTLS) both wait on the identity-provider product choice (item 2) rather than a Phase target; their remaining scope defers to whichever phase follows that choice.
    All the stories above are now marked `implemented`, per `docs/implementation/phase-0-exit-report.md`. US-BL-017-03 was not part of this confirmation and stays `in_progress` (see section 4).
 4. **Outbox sequence grant.** `sintius_app` holds `SELECT, USAGE` on `outbox_event_entry_id_seq` (from migration 005), which it does not need. It is recorded in the privilege manifest for now; revoking it takes a one-line migration if the PO agrees.
-5. **D7 (UUIDv7 primary keys).** Accepted, not yet implemented. It is cheapest before Phase 1 adds billing tables, so do it right after Phase 0 exit.
+5. **D7 (UUIDv7 primary keys).** Accepted. Phase 1 done: `platform/id` (UUIDv7 generator) plus SPIKE-03's benchmark confirming the locality premise (see `docs/implementation/spikes/SPIKE-03/`). Phase 2 (adopt for every new Phase 1+ table) is unblocked and needs no further confirmation. Phases 3 (retrofit Phase 0's internal-only generated IDs) and 4 (`tenant_id` itself, a breaking wire-contract change) are proposed in `docs/implementation/spikes/SPIKE-03/migration-plan.md` — Phase 4 has one explicit open question (keep the tenant slug as the external/JWT surface, recommended, or switch to the raw uuid) that needs the Product Owner's confirmation before it starts.
 
 ## 6. What to do next (the Phase 0 exit plan; PRs 1–5 are done)
 
@@ -295,7 +299,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 
 **PR 5 (done): exit package.** `tools/requirements/story-dod.ts` and `tools/requirements/test-strategy.ts` are the US-MSR-103-DOD and US-MSR-099-TEST-STRATEGY pipeline controls, run in CI by `npm run check:pipeline-controls` (`check-pipeline-controls.mjs`) against this run's TAP reports, the same way `check:evidence` verifies implementation evidence. `docs/implementation/specification-test-status.json` is the durable status overlay for specification-derived test IDs. `npm start` (`apps/api/src/main.ts`) composes the API on PostgreSQL with a configured identity provider or a clearly labelled local-development-only key set (`apps/api/src/local-development/identity.ts`); `npm run demo:exit` (`apps/api/src/local-development/exit-demonstration.ts`) runs the scripted exit demonstration. `docs/implementation/golden/money-proration-allocation.json` and `platform/money/tests/golden-dataset.test.ts` are the golden-dataset determinism/provenance check. The Product Owner confirmed the proposed deferrals (section 5 item 3) and approved the merge in-session on 2026-09-25; twelve of the thirteen Phase 0 stories are now `implemented` (all but US-BL-017-03, section 4).
 
-**After Phase 0 (needs the Product Owner's confirmation of section 5 item 3 first):** D7 UUIDv7 migration, then Phase 1 billing domains, per `docs/pre-implementation/21-technical-implementation-plan.md`.
+**After Phase 0 (done):** D7 Phase 1 (`platform/id`, SPIKE-03) is complete. Next: Phase 1 billing domains, per `docs/pre-implementation/21-technical-implementation-plan.md`, adopting UUIDv7 for every new table (D7 Phase 2). D7 Phases 3–4 are proposed in `docs/implementation/spikes/SPIKE-03/migration-plan.md`, Phase 4 pending a Product Owner decision on its one open question.
 
 ## 7. Definition of done for any tranche
 

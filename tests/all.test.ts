@@ -1,4 +1,5 @@
 import "../platform/problem-model/tests/problem-model.test.ts";
+import "../platform/id/tests/uuid7.test.ts";
 import "../platform/tenant-context/tests/tenant-context.test.ts";
 import "../platform/tenant-context/tests/tenant-propagation.test.ts";
 import "../platform/tenant-context/tests/tenant-job.test.ts";
