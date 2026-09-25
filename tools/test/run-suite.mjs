@@ -13,6 +13,7 @@ const SUITES = {
     files: [
       "modules/identity-tenant/tests/postgres-persistence.test.ts",
       "platform/outbox/tests/postgres-outbox.test.ts",
+      "platform/outbox/tests/postgres-delivery.test.ts",
       "tests/integration/phase0-release-gate.test.ts",
       "apps/api/tests/postgres-http.test.ts",
     ],

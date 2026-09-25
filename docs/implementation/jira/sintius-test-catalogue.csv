@@ -6,7 +6,7 @@
 "TC-001-02-02","Concurrent duplicate race produces one effect","concurrency","passing","US-BL-001-02","SUB-E001","MSR-058-C69192855F;MSR-058-2CCE1DD0DC;MSR-100-D1A3F8F46A","Planned",""
 "TC-001-02-03","Same key remains isolated between tenants","security","passing","US-BL-001-02","SUB-E001","MSR-058-C69192855F","Planned",""
 "TC-001-03-01","Mutation/outbox atomicity","integration","passing","US-BL-001-03","SUB-E001","","Planned",""
-"TC-001-03-02","Crash-after-publish replay and deduplication","chaos","partial","US-BL-001-03","SUB-E001","","Planned",""
+"TC-001-03-02","Crash-after-publish replay and deduplication","chaos","passing","US-BL-001-03","SUB-E001","","Planned",""
 "TC-001-04-01","Tenant A/B CRUD isolation matrix","security","partial","US-BL-001-04","SUB-E001","MSR-082-83D62B3FFC;MSR-082-A110A8A3AA;MSR-082-8E4D03300F;MSR-100-2B6E40A9E3","Planned",""
 "TC-001-04-02","Missing database tenant context fails closed","integration","partial","US-BL-001-04","SUB-E001","MSR-082-8E4D03300F;MSR-100-2B6E40A9E3","Planned",""
 "TC-001-05-01","Known problem mappings remain stable","contract","passing","US-BL-001-05","SUB-E001","","Planned",""
