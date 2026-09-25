@@ -174,6 +174,8 @@ The critical path is `P0-001 -> P0-002 -> P0-003 -> P0-004 -> P0-005 -> P0-006 -
 
 ## PR 5 — Phase 0 exit package (US-MSR-103-DOD, US-MSR-099-TEST-STRATEGY)
 
+**Status: done.** The Product Owner confirmed the proposed deferrals and approved the merge on 2026-09-25 (`docs/implementation/phase-0-exit-report.md`). Twelve of the thirteen Phase 0 stories are `implemented`; only P0-009's isolation-gate story (`US-BL-017-03`, "run against deployed roles once an environment exists") stays open, pending a deployed environment.
+
 - **Pipeline controls.** `tools/requirements/story-dod.ts` and `tools/requirements/test-strategy.ts` are pipeline controls, not checklists. `check-pipeline-controls.mjs` runs in the CI release gate, after the unit and PostgreSQL suites, against this run's TAP reports:
   - it rejects a story marked `implemented` unless every one of its tests is `passing` in the durable roadmap source, exists as an automated test titled with its TC ID, and actually passed in this run — and requires a financially material story (pricing, billing, receivables, payments, collections, revenue, audit/finance) to carry a passing `reconciliation`-typed test or an explicit, reviewed `reconciliationRationale` (US-MSR-103-DOD, master specification §103);
   - it declares every quality-suite class in `docs/pre-implementation/24-testing-strategy.md` §16 as either applicable now with real automated passing evidence, or not yet applicable with a reviewed rationale — never silently missing (US-MSR-099-TEST-STRATEGY, master specification §99). No pricing, rating, billing, payments, collections, revenue or UI module exists yet, so those classes are the ones marked not-yet-applicable.

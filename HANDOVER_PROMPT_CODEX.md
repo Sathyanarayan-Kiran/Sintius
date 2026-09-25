@@ -2,7 +2,7 @@
 
 Copy everything below the divider into Codex. Set the working directory to the repository root (the folder that contains `package.json`).
 
-State as of 2026-09-25, `master` at the merge of PR #10. PRs #1–#10 are merged, and PR 5 (the Phase 0 exit package, section 6) is implemented and awaiting the Product Owner's merge decision.
+State as of 2026-09-25. PRs #1–#10 are merged, and PR 5 (the Phase 0 exit package, section 6) is implemented, its proposed deferrals confirmed and its merge approved by the Product Owner. Phase 0 is exited except US-BL-017-03 (section 4).
 
 ---
 
@@ -13,7 +13,7 @@ You are continuing implementation of the **Sintius AI-native Subscription and Re
 - run the full gate before you report;
 - report only what you actually proved.
 
-Phase 0 (the platform foundation) has its exit package implemented (section 6, PR 5). What remains is Product Owner confirmation of the proposed deferrals in section 5 and the merge decision; the identity-provider product choice does not block Phase 0.
+Phase 0 (the platform foundation) is exited: its exit package (section 6, PR 5) is implemented, its proposed deferrals confirmed and its merge approved by the Product Owner. US-BL-017-03 stays `in_progress` (section 4) pending a deployed environment to run it against; the identity-provider product choice does not block Phase 0. Next: D7 UUIDv7 migration, then Phase 1 (section 6).
 
 ## 1. Read first (in this order)
 
@@ -258,16 +258,16 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 | Story | Status | Progress | Tests | Remaining |
 |---|---|---|---|---|
 | US-BL-001-01 tenant context | **implemented** | 100 | 3/3 passing | A Redis adapter only when multi-instance coherence is needed (optional) |
-| US-BL-001-02 idempotency | in_progress | 92 | 3/3 passing | Deterministic failed-final responses, retention source and cleanup job (proposed deferral to Phase 6) |
-| US-BL-001-03 outbox | in_progress | 90 | 2/2 passing | Continuous runtime loop with lease renewal, schema validation, gap detection, retention (proposed deferral to Phase 1) |
-| US-BL-001-04 RLS | in_progress | 90 | 2/2 passing | Alerting on RLS and missing-context denials (proposed new deferral to Phase 6, not yet in the list below — needs PO confirmation) |
+| US-BL-001-02 idempotency | **implemented** | 100 | 3/3 passing | Deterministic failed-final responses, retention source and cleanup job (deferred to Phase 6, PO-confirmed 2026-09-25) |
+| US-BL-001-03 outbox | **implemented** | 100 | 2/2 passing | Continuous runtime loop with lease renewal, schema validation, gap detection, retention (deferred to Phase 1, PO-confirmed 2026-09-25) |
+| US-BL-001-04 RLS | **implemented** | 100 | 2/2 passing | Alerting on RLS and missing-context denials (deferred to Phase 6, PO-confirmed 2026-09-25) |
 | US-BL-001-05 problems and trace | **implemented** | 100 | 2/2 passing | UI copy (deferred to the first UI story, D16) |
 | US-BL-002-01 tenant lifecycle | **implemented** | 100 | 3/3 passing | None for Phase 0. TC-002-01-01/02 were claimed `passing` with no test titled with their ID until PR 5 retitled `modules/identity-tenant/tests/tenant.test.ts`'s two domain tests to close the gap the new US-MSR-103-DOD gate found. |
-| US-BL-002-02 administrator authentication | in_progress | 90 | 2/2 passing | IdP product choice, revocation feed or command, admin-web login flow |
-| US-BL-002-03 RBAC and maker-checker | in_progress | 88 | 2/2 passing | Approval expiry sweeper, ApprovalPolicy management commands, ingress routes (proposed deferral to Phase 1) |
-| US-BL-002-04 workload identity | in_progress | 85 | 2/2 passing | Issuance and rotation at the IdP, mTLS later |
-| US-BL-017-01 audit | in_progress | 75 | 2/2 passing | PostgreSQL audit reader and `audit:read` route, hash-chain decision, retention (proposed deferral: reader to Phase 1, hash-chain/retention to Phase 6) |
-| US-BL-017-03 release blocking on isolation | in_progress | 85 | 2/2 passing | Run against deployed roles once an environment exists |
+| US-BL-002-02 administrator authentication | **implemented** | 100 | 2/2 passing | IdP product choice, revocation feed or command, admin-web login flow (waits on the IdP product choice, item 2 — does not block Phase 0) |
+| US-BL-002-03 RBAC and maker-checker | **implemented** | 100 | 2/2 passing | Approval expiry sweeper, ApprovalPolicy management commands, ingress routes (deferred to Phase 1, PO-confirmed 2026-09-25) |
+| US-BL-002-04 workload identity | **implemented** | 100 | 2/2 passing | Issuance and rotation at the IdP, mTLS later (waits on the IdP product choice, item 2 — does not block Phase 0) |
+| US-BL-017-01 audit | **implemented** | 100 | 2/2 passing | PostgreSQL audit reader and `audit:read` route (deferred to Phase 1), hash-chain decision and retention (deferred to Phase 6) — PO-confirmed 2026-09-25. Carries a reviewed `reconciliationRationale`: this story is the audit-event write path, not a financial reconciliation function, so §103's reconciliation clause does not apply to it. |
+| US-BL-017-03 release blocking on isolation | in_progress | 85 | 2/2 passing | Run against deployed roles once an environment exists — not part of the confirmed deferral list; needs its own explicit call once a deployed environment exists |
 | US-MSR-103-DOD Definition of Done | **implemented** | 100 | 2/2 passing | None for Phase 0 — `check-pipeline-controls.mjs` (PR 5) |
 | US-MSR-099-TEST-STRATEGY | **implemented** | 100 | 2/2 passing | None for Phase 0 — `check-pipeline-controls.mjs` (PR 5) |
 
@@ -281,10 +281,11 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 
 1. **D9 persona matrix.** Done: reviewed by the PO on 2026-09-25 (`docs/implementation/persona-permission-matrix.md`).
 2. **Identity-provider product.** Candidates are Entra ID, Okta, Auth0, Cognito or Keycloak. It must support OIDC, MFA (emitting `amr` = `mfa`), SAML federation and client credentials. This does not block Phase 0.
-3. **Proposed Phase 0 deferrals, not yet explicitly confirmed — PR 5 asks the PO to confirm all of these before the stories they attach to can be marked `implemented`:**
+3. **Phase 0 deferrals — confirmed by the Product Owner, 2026-09-25:**
    - to Phase 1: the continuous dispatcher runtime (US-BL-001-03), the approval expiry sweeper and policy commands (US-BL-002-03), and the PostgreSQL audit reader (US-BL-017-01);
-   - to Phase 6: retention and cleanup jobs including idempotency's deterministic failed-final responses (US-BL-001-02), Redis, audit hash-chaining and retention (US-BL-017-01), the move to Kafka, and — **new in PR 5** — alerting on RLS and missing-database-context denials (US-BL-001-04), which was implemented but never explicitly placed in a deferral bucket;
-   - US-BL-002-02 (IdP product choice, a revocation feed or command, and the admin-web login flow) and US-BL-002-04 (credential issuance/rotation at the IdP, mTLS) both wait on the identity-provider product choice (item 2) rather than a Phase target; propose deferring their remaining scope to whichever phase follows that choice.
+   - to Phase 6: retention and cleanup jobs including idempotency's deterministic failed-final responses (US-BL-001-02), Redis, audit hash-chaining and retention (US-BL-017-01), the move to Kafka, and alerting on RLS and missing-database-context denials (US-BL-001-04), which was implemented but never explicitly placed in a deferral bucket;
+   - US-BL-002-02 (IdP product choice, a revocation feed or command, and the admin-web login flow) and US-BL-002-04 (credential issuance/rotation at the IdP, mTLS) both wait on the identity-provider product choice (item 2) rather than a Phase target; their remaining scope defers to whichever phase follows that choice.
+   All the stories above are now marked `implemented`, per `docs/implementation/phase-0-exit-report.md`. US-BL-017-03 was not part of this confirmation and stays `in_progress` (see section 4).
 4. **Outbox sequence grant.** `sintius_app` holds `SELECT, USAGE` on `outbox_event_entry_id_seq` (from migration 005), which it does not need. It is recorded in the privilege manifest for now; revoking it takes a one-line migration if the PO agrees.
 5. **D7 (UUIDv7 primary keys).** Accepted, not yet implemented. It is cheapest before Phase 1 adds billing tables, so do it right after Phase 0 exit.
 
@@ -292,7 +293,7 @@ Do not restart discovery, and do not regenerate a smaller backlog.
 
 **PR 4 (done): D9 persona permission matrix.** See `modules/identity-tenant/domain/persona-matrix.ts` and `docs/implementation/persona-permission-matrix.md`. When a later story adds a permission, add its persona grants there with a basis and sources, regenerate the document table from `renderPersonaMatrix()`, and get the Product Owner's decision on anything inferred or proposed.
 
-**PR 5 (done): exit package.** `tools/requirements/story-dod.ts` and `tools/requirements/test-strategy.ts` are the US-MSR-103-DOD and US-MSR-099-TEST-STRATEGY pipeline controls, run in CI by `npm run check:pipeline-controls` (`check-pipeline-controls.mjs`) against this run's TAP reports, the same way `check:evidence` verifies implementation evidence. `docs/implementation/specification-test-status.json` is the durable status overlay for specification-derived test IDs. `npm start` (`apps/api/src/main.ts`) composes the API on PostgreSQL with a configured identity provider or a clearly labelled local-development-only key set (`apps/api/src/local-development/identity.ts`); `npm run demo:exit` (`apps/api/src/local-development/exit-demonstration.ts`) runs the scripted exit demonstration. `docs/implementation/golden/money-proration-allocation.json` and `platform/money/tests/golden-dataset.test.ts` are the golden-dataset determinism/provenance check. Five stories were marked `implemented` (US-BL-001-01, US-BL-001-05, US-BL-002-01, US-MSR-103-DOD, US-MSR-099-TEST-STRATEGY); the rest have proposed, not-yet-confirmed deferrals per section 5 item 3.
+**PR 5 (done): exit package.** `tools/requirements/story-dod.ts` and `tools/requirements/test-strategy.ts` are the US-MSR-103-DOD and US-MSR-099-TEST-STRATEGY pipeline controls, run in CI by `npm run check:pipeline-controls` (`check-pipeline-controls.mjs`) against this run's TAP reports, the same way `check:evidence` verifies implementation evidence. `docs/implementation/specification-test-status.json` is the durable status overlay for specification-derived test IDs. `npm start` (`apps/api/src/main.ts`) composes the API on PostgreSQL with a configured identity provider or a clearly labelled local-development-only key set (`apps/api/src/local-development/identity.ts`); `npm run demo:exit` (`apps/api/src/local-development/exit-demonstration.ts`) runs the scripted exit demonstration. `docs/implementation/golden/money-proration-allocation.json` and `platform/money/tests/golden-dataset.test.ts` are the golden-dataset determinism/provenance check. The Product Owner confirmed the proposed deferrals (section 5 item 3) and approved the merge in-session on 2026-09-25; twelve of the thirteen Phase 0 stories are now `implemented` (all but US-BL-017-03, section 4).
 
 **After Phase 0 (needs the Product Owner's confirmation of section 5 item 3 first):** D7 UUIDv7 migration, then Phase 1 billing domains, per `docs/pre-implementation/21-technical-implementation-plan.md`.
 

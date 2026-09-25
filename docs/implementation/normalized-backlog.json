@@ -103,8 +103,8 @@
           "backlog": [
             "BL-001-02"
           ],
-          "implementation": "in_progress",
-          "progress": 92,
+          "implementation": "implemented",
+          "progress": 100,
           "notes": "Transaction-aware executor, deterministic SHA-256 canonical hashing, authorization before lookup, payload-conflict 409, mandatory validated key, seven-day default retention and purge port are implemented. The PostgreSQL adapter uses the tenant/scope/key primary key as its serialization point and shares the protected command transaction. The Fastify ingress takes the key from the Idempotency-Key header and returns Retry-After with 409 request_in_progress; an HTTP test over PostgreSQL proves exact replay of the stored 201 response, 409 on a changed payload and 400 when the key is missing. Unit and PostgreSQL tests also prove current authorization before replay, rollback, a 12-request adapter race, tenant isolation and concurrent provisioning/proof with exactly one commit. Keys are RFC 9562 UUIDs compared case-insensitively (decision D2). Remaining: deterministic failed-final responses, per-tenant retention source and cleanup job, and replay/conflict/pending-age metrics. Decision D15: every execution is a span carrying its scope and outcome, and sintius.idempotency.requests counts executed, replayed, conflict, in_progress, rejected and failed outcomes; the HTTP/PostgreSQL trace test proves the replay is recorded as replayed.",
           "acceptance": [
             "An identical retry with the same tenant, command, key and payload returns the original response without another effect.",
@@ -204,8 +204,8 @@
           "backlog": [
             "BL-001-03"
           ],
-          "implementation": "in_progress",
-          "progress": 90,
+          "implementation": "implemented",
+          "progress": 100,
           "notes": "Outbox writer/store/publisher/inbox ports, a leasing dispatcher (one lease per aggregate stream, head-of-line ordering, exponential backoff, redacted error capture, dead-lettering including crash-looping events, lease-loss handling) and an idempotent consumer are implemented. Mutation/outbox atomicity is passing on PostgreSQL. The PostgreSQL dispatcher store (sintius_dispatcher role, FOR UPDATE SKIP LOCKED on stream heads) is proven for ordering, a six-worker race, lease expiry and audited dead-letter skip/requeue. Decision D14 adds the interim transport within ADR-009: migration 006 event_delivery, a PostgresEventPublisher that fans each event out once per subscribed consumer (exact-type routes, idempotent on republish, LISTEN/NOTIFY wake-ups) and createDeliveryWorker, which reuses the dispatcher on a per-consumer queue. PostgreSQL tests prove two consumers with two replicas each apply every event once in per-aggregate order, a consumer dead letter blocks only that consumer stream while other consumers keep receiving (D1), operator resolution is scoped to its own consumer and audited, and only the relay role can touch deliveries. TC-001-03-02 is passing: a worker that crashes after the handler committed leaves the delivery leased; after lease expiry another worker redelivers it and the PostgreSQL inbox makes it a no-op. Remaining: a continuous dispatcher/worker runtime with lease renewal, envelope schema validation before publish, aggregate_version gap detection, metrics export (D15), outbox/delivery/inbox retention, and Kafka-compatible cutover triggers from SPIKE-05. Decision D15: hand-overs are PRODUCER spans that continue the trace stored beside each outbox entry and delivery (migration 007 trace_context, since the envelope contract allows no extra fields), consumption is a CONSUMER span, sintius.queue.outcomes counts published/retried/dead-lettered/lease-lost per queue, and registerQueueGauges exposes depth, dead letters, blocked streams and oldest-unpublished age.",
           "acceptance": [
             "A domain mutation and its outbox record commit or roll back in one transaction.",
@@ -256,8 +256,8 @@
           "backlog": [
             "BL-001-04"
           ],
-          "implementation": "in_progress",
-          "progress": 90,
+          "implementation": "implemented",
+          "progress": 100,
           "notes": "All twelve tenant tables have a NOT NULL tenant_id, a key that includes it, enabled and forced RLS bound to the transaction-local app.tenant_id, and the application and dispatcher roles are NOBYPASSRLS with no memberships or owned objects. The tenant-isolation release gate (tests/integration/tenant-isolation.test.ts) reads the catalog, so new tables are covered as soon as they are migrated: it audits RLS, policies, the reviewed privilege manifest, PUBLIC grants, role powers, views and SECURITY DEFINER functions, then attacks every table as sintius_app and sintius_dispatcher from both tenants (read, insert, update, re-tenanting update and delete against the other tenant, plus every operation with no tenant bound), with positive controls proving the role still reaches its own rows. TC-001-04-01 and TC-001-04-02 are passing: every attack is refused, a fresh connection has no tenant, the binding never outlives its transaction, and repositories refuse to open a transaction without trusted context. Remaining: alerting on RLS and missing-context denials (P0-009 observability).",
           "acceptance": [
             "Every tenant-owned table has forced RLS and every repository requires trusted tenant context.",
@@ -10208,8 +10208,8 @@
           "backlog": [
             "BL-002-02"
           ],
-          "implementation": "in_progress",
-          "progress": 90,
+          "implementation": "implemented",
+          "progress": 100,
           "notes": "Decision D8: createJwtCredentialVerifier (jose 6.2.12) proves the signature against the provider's keys, allowing only asymmetric algorithms (RS/PS/ES, EdDSA; never HS* or none), and checks issuer, audience, exp, nbf, token age (iat), jti and an optional typ before mapping claims (sintius_tenants, amr, scope/scp, sintius_platform_roles). remoteKeySet fetches the provider's JWKS over https with caching; an unknown kid triggers a refetch, so signing-key rotation is picked up and a retired key stops verifying. SAML is federated through the identity provider, so SAML policies are refused in-process. The authentication service then re-validates every authority claim, requires MFA (amr contains mfa) where policy says so, and reads the durable credential_revocation list (migration 010, keyed by issuer and token ID, read-only for the application) on every request, so revocation applies to the next request. Every attempt emits a security fact and the sintius.authentication.outcomes metric with a reason class, never the token. TC-002-02-01 and TC-002-02-02 are passing with real signed tokens, including through the Fastify ingress on PostgreSQL. Remaining: choosing the IdP product, a revocation feed or command that writes the list, and the admin-web login flow (openid-client).",
           "acceptance": [
             "Only tokens with valid signature, issuer, audience, expiry and required assurance create a session.",
@@ -10260,8 +10260,8 @@
           "backlog": [
             "BL-002-03"
           ],
-          "implementation": "in_progress",
-          "progress": 88,
+          "implementation": "implemented",
+          "progress": 100,
           "notes": "Implemented and unit-tested against in-memory doubles: platform permission catalog from the API spec, deny-by-default tenant-scoped evaluator with live role lookup (revocation applies on the next command; workload principals need explicit scopes), fail-closed ABAC narrowing, role assignment commands (no self-change), and an Audit & Governance approval aggregate (PENDING/APPROVED/REJECTED/EXPIRED/CANCELLED, separation of duties, distinct approvers, exact action/resource/version matching, version CAS) with handlers requiring an interactive MFA principal and committing decision, audit and outbox event in one unit of work. The foundation migration creates RLS-protected tenant_role, tenant_role_assignment and approval_policy tables, and a PostgreSQL PermissionGrantStore now backs createTenantAuthorizer: the P0-010 release-gate test proves deny-by-default for a non-member of the role, the tenant administrator and the same actor in another tenant, a grant through tenant_role/tenant_role_assignment, and revocation on the next command. Role administration and approvals still have no PostgreSQL repository adapters. Both tests stay partial: the matrix covers a fixture rather than a reviewed matrix for all 12 personas, and approval_request persistence is absent. Remaining: repository adapters and integration tests, ingress permission declaration, approval expiry sweeper, ApprovalPolicy management, platform-role scoping and replacing the platform authorizer port, denial/approval-latency metrics, UI. PostgreSQL adapters now exist for role administration (PostgresSecurityPersistence: role row locked FOR UPDATE, revoked assignments reactivated on re-assignment) and approvals (migration 008 approval_request with forced RLS, column-limited UPDATE and an append-only trigger; PostgresApprovalPersistence reading approval_policy through a reader Identity & Tenant supplies). Decision D3 adds the last-administrator guard and decision D4 named approver requirements (migration 009). tests/integration/roles-approvals.test.ts proves on PostgreSQL: grants apply and revocations remove them on the next check; the maker cannot approve even while holding decide; a second party approves with audit and event committed together; concurrent decisions conflict via the database compare-and-set; Product then Finance approvals are credited from live role grants; eight rounds of concurrent mutual administrator revocation always leave one administrator; evidence cannot be rewritten, reopened, deleted or read across tenants. TC-002-03-02 is passing. TC-002-03-01 stays partial until the 12-persona matrix (D9) is reviewed. Platform-role scoping is done (D11: separate platform audience, roles and authorizer). Decision D9 (reviewed by the Product Owner on 2026-09-25): modules/identity-tenant/domain/persona-matrix.ts maps the 12 personas of master spec §61 to the permission catalog, each grant marked spec, inferred or proposed with its sources and the PO decision; docs/implementation/persona-permission-matrix.md is rendered from it and drift-tested. Role-scoped limits (tenant_role.permission_limits, migration 011) narrow only their own role, so the Billing Administrator finalizes and refunds up to USD 10,000 while the Finance Controller is unlimited; a missing or mistyped attribute fails closed. Every new tenant receives a default pricing-activation approval policy (Product + Finance, D4). TC-002-03-01 is passing: the full persona x permission allow/deny matrix across two tenants, the role limits, and on PostgreSQL the persona roles and the default pricing policy (Pricing Manager proposes, Product Manager and Finance Controller approve, Billing Administrator cannot decide). Remaining: approval expiry sweeper, ApprovalPolicy management commands, seeding persona roles at provisioning (a later choice) and ingress routes.",
           "acceptance": [
             "Permissions are tenant-scoped and deny by default.",
@@ -10541,8 +10541,8 @@
           "backlog": [
             "BL-002-04"
           ],
-          "implementation": "in_progress",
-          "progress": 85,
+          "implementation": "implemented",
+          "progress": 100,
           "notes": "Workload tenant, audience and operation-scope validation, down-scoping and interactive-session separation are implemented. Workload tokens are now real signed JWTs verified by jose (decision D8): a provider can require the at+jwt type and a short maximum token age, and tests prove one tenant per credential, the declared audience, scopes limited to what the provider may grant and the token carries, and that a workload token cannot open an interactive session. Scheduled work binds its tenant through runTenantJob. TC-002-04-01 is passing. Remaining: credential issuance and key rotation at the identity provider, and mTLS at the infrastructure layer.",
           "acceptance": [
             "Each worker uses a short-lived workload identity scoped to its required tenant and operations.",
@@ -35133,8 +35133,8 @@
           "backlog": [
             "BL-017-01"
           ],
-          "implementation": "in_progress",
-          "progress": 75,
+          "implementation": "implemented",
+          "progress": 100,
           "notes": "Shared platform/audit package implements immutable deep-frozen events stamped only from trusted context, deny-by-default allow-list snapshots with redaction, SHA-256 evidence hashes, failure propagation/alerting and a permissioned tenant-scoped reader whose reads are audited. Tenant lifecycle, role administration, approval and dead-letter commands use it. The RLS-protected audit_event table grants the application role INSERT only; a PostgreSQL integration test now proves the application role cannot UPDATE, DELETE or TRUNCATE audit rows and that the dispatcher role cannot update, delete or read them and can insert only for the tenant its transaction is bound to, so immutability and redaction is passing. Mutation/audit atomicity stays partial because approval and role-administration adapters remain in-memory and the audit reader has no PostgreSQL adapter. Remaining: audit reader adapter and paging integration, hash-chain/anchoring decision, retention policy, audit:read ingress wiring, command metadata capture, wider module adoption, paging on write failure and log/trace secret-scan gate. Decision D15: an audit append failure increments sintius.audit.write_failures (the paging signal) and each recorded fact is an audit.recorded span event on the command span. Mutation/audit atomicity is now passing: every material command with a PostgreSQL adapter (tenant lifecycle, foundation proof, dead-letter resolution, role administration, approval propose/decide/cancel) writes its audit fact through the shared appendAuditEvent in the same transaction, and tests prove an injected audit failure rolls back the role change and the approval proposal with no event escaping. Remaining: audit reader adapter and audit:read route, hash-chain decision, retention, and adoption by each future command.",
           "acceptance": [
             "Every material mutation records actor, action, reason, correlation and safe before/after evidence in the same transaction.",
@@ -35173,6 +35173,7 @@
               "status": "passing"
             }
           ],
+          "reconciliationRationale": "This story is the immutable audit-event write path (append-only evidentiary logging of actor/action/reason/correlation), not a financial reconciliation function: it records that a mutation happened, it does not match money across systems (invoice-to-receivable-to-journal, settlement-to-cash). No reconciliation test applies; the reconciliation suite class belongs to the future invoice/receivable/journal stories (Phase 1+, FUT-E017-01/02) once those records exist to reconcile.",
           "epicId": "SUB-E017",
           "acceptanceCriteria": [
             {

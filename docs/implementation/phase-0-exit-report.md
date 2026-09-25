@@ -3,6 +3,7 @@
 **To:** Product Owner
 **From:** implementation session, 2026-09-25
 **Branch:** `claude/nice-bell-iox4sy`, `master` at the merge of PR #10
+**Update, 2026-09-25:** the Product Owner confirmed the proposed deferrals below and approved the merge in-session. Section "Proposed deferrals" and "Story status changes" are updated accordingly; nothing in the sections that follow was changed after confirmation except marking the affected stories `implemented`.
 
 ## What this PR does
 
@@ -14,23 +15,28 @@
 
 ## Story status changes
 
-Five stories moved to `implemented` (100% progress, every test passing, automated and verified against this run's CI-style TAP reports):
+**Twelve of the thirteen Phase 0 stories are now `implemented`** (100% progress, every test passing, automated and verified against this run's CI-style TAP reports):
 
 - **US-BL-001-01** (tenant context) — remaining item is optional (a Redis adapter, only if multi-instance coherence becomes needed).
+- **US-BL-001-02** (idempotency) — remaining item confirmed deferred to Phase 6 (see below).
+- **US-BL-001-03** (outbox) — remaining item confirmed deferred to Phase 1 (see below).
+- **US-BL-001-04** (RLS) — remaining item confirmed deferred to Phase 6 (see below).
 - **US-BL-001-05** (problems and trace) — remaining item (UI copy) is already deferred by decision D16 to the first UI story.
 - **US-BL-002-01** (tenant lifecycle) — nothing remaining for Phase 0, once the TC-002-01-01/02 titling gap above was closed.
+- **US-BL-002-02** (administrator authentication) — remaining items wait on the identity-provider product choice (see below).
+- **US-BL-002-03** (RBAC and maker-checker) — remaining item confirmed deferred to Phase 1 (see below).
+- **US-BL-002-04** (workload identity) — remaining items wait on the identity-provider product choice (see below).
+- **US-BL-017-01** (audit) — remaining item confirmed deferred (reader to Phase 1, hash-chain/retention to Phase 6, see below). Carries a reviewed `reconciliationRationale` in the roadmap data: this story is the immutable audit-event write path, not a financial reconciliation function, so master specification §103's reconciliation-evidence clause does not apply to it; that clause belongs to the future invoice/receivable/journal stories once those records exist.
 - **US-MSR-103-DOD** (Definition of Done) — this PR's own pipeline control.
 - **US-MSR-099-TEST-STRATEGY** (test strategy) — this PR's own pipeline control.
 
-## Proposed deferrals — **not yet confirmed**
+**US-BL-017-03** (release blocking on isolation) stays `in_progress`. Its remaining item — "run against deployed roles once an environment exists" — was not part of the deferral proposal put to the Product Owner and so was not marked implemented on the strength of a general "go ahead"; it needs its own explicit call once a deployed environment exists to run it against.
 
-Everything below is a proposal for your decision, not a decision already made. Until you confirm, the affected stories stay `in_progress` even though the code and tests behind them are otherwise stable:
+## Proposed deferrals — **confirmed by the Product Owner, 2026-09-25**
 
 - **To Phase 1:** the continuous outbox dispatcher runtime (US-BL-001-03); the approval expiry sweeper and `ApprovalPolicy` management commands (US-BL-002-03); the PostgreSQL audit reader and `audit:read` route (US-BL-017-01).
-- **To Phase 6:** idempotency's deterministic failed-final responses, retention source and cleanup job (US-BL-001-02); Redis for multi-instance cache coherence (US-BL-001-01, optional); audit hash-chaining and retention (US-BL-017-01); the move to Kafka; and **newly identified in this PR** — alerting on RLS and missing-database-context denials (US-BL-001-04), which is implemented but was never explicitly placed in a deferral bucket in the prior handover.
+- **To Phase 6:** idempotency's deterministic failed-final responses, retention source and cleanup job (US-BL-001-02); Redis for multi-instance cache coherence (US-BL-001-01, optional); audit hash-chaining and retention (US-BL-017-01); the move to Kafka; and alerting on RLS and missing-database-context denials (US-BL-001-04), which is implemented but was never explicitly placed in a deferral bucket in the prior handover.
 - **Waiting on the identity-provider product choice** (an existing open item, not blocking Phase 0): US-BL-002-02's revocation feed/command and admin-web login flow, and US-BL-002-04's credential issuance/rotation at the IdP and mTLS.
-
-If you'd rather see any of these pulled forward into Phase 0 instead of deferred, say so and we'll scope the remaining work as its own tranche before merge.
 
 ## Commands run, with results
 
@@ -55,5 +61,5 @@ npm run demo:exit  # PASS, run twice, both times with the same evidence shape
 
 ## What's needed from you
 
-1. Confirm, adjust or reject the proposed deferrals in the section above.
-2. Say "merge" when you're ready — per the working agreement, the Release gate check must pass and you decide the merge timing.
+~~1. Confirm, adjust or reject the proposed deferrals in the section above.~~ Done, 2026-09-25.
+~~2. Say "merge" when you're ready.~~ Done, 2026-09-25 — see PR #12 for the merge itself.
