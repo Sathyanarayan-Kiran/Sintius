@@ -46068,7 +46068,16 @@
           "TC-001-04-01",
           "TC-002-01-03"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:tests/integration/support/tenant-isolation.ts",
+          "code:tests/integration/tenant-isolation.test.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "code:platform/tenant-context/src/context.ts",
+          "code:platform/tenant-context/src/job.ts",
+          "code:.github/workflows/ci.yml",
+          "test:TC-001-04-01",
+          "test:TC-002-01-03"
+        ],
         "notes": "Normalized from master specification §82, line 1956; mapping generated without claiming implementation evidence."
       }
     },
@@ -46155,7 +46164,16 @@
           "TC-001-04-01",
           "TC-017-03-01"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:tests/integration/support/tenant-isolation.ts",
+          "code:tests/integration/tenant-isolation.test.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "code:platform/tenant-context/src/context.ts",
+          "code:platform/tenant-context/src/job.ts",
+          "code:.github/workflows/ci.yml",
+          "test:TC-001-04-01",
+          "test:TC-017-03-01"
+        ],
         "notes": "Normalized from master specification §82, line 1959; mapping generated without claiming implementation evidence."
       }
     },
@@ -46201,7 +46219,18 @@
           "TC-001-04-01",
           "TC-001-04-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:tests/integration/support/tenant-isolation.ts",
+          "code:tests/integration/tenant-isolation.test.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "code:platform/tenant-context/src/context.ts",
+          "code:platform/tenant-context/src/job.ts",
+          "code:.github/workflows/ci.yml",
+          "test:TC-001-01-02",
+          "test:TC-001-01-03",
+          "test:TC-001-04-01",
+          "test:TC-001-04-02"
+        ],
         "notes": "Normalized from master specification §82, line 1961; mapping generated without claiming implementation evidence."
       }
     },
@@ -57051,7 +57080,18 @@
           "TC-017-03-01",
           "TC-017-03-02"
         ],
-        "implementationEvidence": [],
+        "implementationEvidence": [
+          "code:tests/integration/support/tenant-isolation.ts",
+          "code:tests/integration/tenant-isolation.test.ts",
+          "code:modules/identity-tenant/infrastructure/postgres/migrations/001_identity_tenant.sql",
+          "code:platform/tenant-context/src/context.ts",
+          "code:platform/tenant-context/src/job.ts",
+          "code:.github/workflows/ci.yml",
+          "test:TC-001-04-01",
+          "test:TC-001-04-02",
+          "test:TC-017-03-01",
+          "test:TC-017-03-02"
+        ],
         "notes": "Normalized from master specification §100, line 2396; mapping generated without claiming implementation evidence."
       }
     },

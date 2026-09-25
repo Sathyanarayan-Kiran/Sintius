@@ -17,6 +17,7 @@ const SUITES = {
       "tests/integration/phase0-release-gate.test.ts",
       "tests/integration/roles-approvals.test.ts",
       "apps/api/tests/postgres-http.test.ts",
+      "tests/integration/tenant-isolation.test.ts",
     ],
     flags: ["--test-concurrency=1"],
   },

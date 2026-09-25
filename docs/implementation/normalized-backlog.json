@@ -30,8 +30,8 @@
             "BL-001-01"
           ],
           "implementation": "in_progress",
-          "progress": 95,
-          "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping are implemented. The PostgreSQL transaction adapter sets a transaction-local tenant, applies mandatory repository filters and is protected by forced RLS. The Fastify ingress derives the tenant only from the authenticated principal (single membership, or X-Active-Tenant choosing among signed memberships), rejects a tenant_id in tenant-scoped bodies before any lookup, checks membership before reading tenant state, and runs the handler inside the resolved context; outbox consumers bind the delivered event's tenant. An in-process InMemoryKeyValueStore (decision D16: size-bounded LRU with TTL and clone-on-read/write) now backs TenantScopedCache, and tests prove tenant A/B separation, expiry, eviction and value isolation through it, so TC-001-01-03 is passing: the trusted tenant reaches the PostgreSQL transaction, the cache and the event envelope. Remaining: worker/job context establishment for scheduled jobs; a Redis adapter only when multi-instance cache coherence is needed.",
+          "progress": 98,
+          "notes": "Resolver, AsyncLocalStorage propagation, forged/nested-context guards, tenant-identity rejection in command input, tenant-scoped cache keys, tenant-bound transaction port and event envelope stamping are implemented. The PostgreSQL transaction adapter sets a transaction-local tenant, applies mandatory repository filters and is protected by forced RLS. The Fastify ingress derives the tenant only from the authenticated principal (single membership, or X-Active-Tenant choosing among signed memberships), rejects a tenant_id in tenant-scoped bodies before any lookup, checks membership before reading tenant state, and runs the handler inside the resolved context; outbox consumers bind the delivered event's tenant. An in-process InMemoryKeyValueStore (decision D16: size-bounded LRU with TTL and clone-on-read/write) now backs TenantScopedCache, and tests prove tenant A/B separation, expiry, eviction and value isolation through it, so TC-001-01-03 is passing: the trusted tenant reaches the PostgreSQL transaction, the cache and the event envelope. Worker context: runTenantJob establishes the same trusted context for scheduled work: it starts only at the root, requires a workload credential bound to exactly one active tenant, derives the correlation ID from the job run, and tests prove concurrent per-tenant runs stay separate and that a job's PostgreSQL transactions are bound to its own tenant. Remaining: a Redis adapter only when multi-instance cache coherence is needed.",
           "acceptance": [
             "Given verified membership in tenant A, when a request enters the application, tenant A is propagated through asynchronous work without accepting a body override.",
             "Given a principal without membership, access is denied before a domain transaction begins.",
@@ -257,8 +257,8 @@
             "BL-001-04"
           ],
           "implementation": "in_progress",
-          "progress": 32,
-          "notes": "All ten current PostgreSQL foundation tables (including inbox_record) have tenant_id, enabled and forced RLS, policies bound to transaction-local app.tenant_id and a NOBYPASSRLS application role. Identity-tenant, idempotency and foundation-proof queries also include explicit tenant binding. Integration evidence proves no-context reads return no tenant rows, a cross-tenant insert is rejected, the same idempotency key is isolated across two tenants, and tenant B cannot observe or replay tenant A's proof result. Both tests remain partial until every future tenant-owned table/repository is migrated and the complete A/B select/insert/update/delete matrix is automated.",
+          "progress": 90,
+          "notes": "All twelve tenant tables have a NOT NULL tenant_id, a key that includes it, enabled and forced RLS bound to the transaction-local app.tenant_id, and the application and dispatcher roles are NOBYPASSRLS with no memberships or owned objects. The tenant-isolation release gate (tests/integration/tenant-isolation.test.ts) reads the catalog, so new tables are covered as soon as they are migrated: it audits RLS, policies, the reviewed privilege manifest, PUBLIC grants, role powers, views and SECURITY DEFINER functions, then attacks every table as sintius_app and sintius_dispatcher from both tenants (read, insert, update, re-tenanting update and delete against the other tenant, plus every operation with no tenant bound), with positive controls proving the role still reaches its own rows. TC-001-04-01 and TC-001-04-02 are passing: every attack is refused, a fresh connection has no tenant, the binding never outlives its transaction, and repositories refuse to open a transaction without trusted context. Remaining: alerting on RLS and missing-context denials (P0-009 observability).",
           "acceptance": [
             "Every tenant-owned table has forced RLS and every repository requires trusted tenant context.",
             "Tenant A cannot read, insert, update or delete tenant B data even if an application filter is bypassed.",
@@ -272,13 +272,13 @@
               "id": "TC-001-04-01",
               "name": "Tenant A/B CRUD isolation matrix",
               "type": "security",
-              "status": "partial"
+              "status": "passing"
             },
             {
               "id": "TC-001-04-02",
               "name": "Missing database tenant context fails closed",
               "type": "integration",
-              "status": "partial"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E001",
@@ -35488,9 +35488,9 @@
           "backlog": [
             "BL-017-03"
           ],
-          "implementation": "not_started",
-          "progress": 0,
-          "notes": "",
+          "implementation": "in_progress",
+          "progress": 85,
+          "notes": "The tenant-isolation gate runs in the Release gate CI job, which the master ruleset requires, so a failure blocks merging. It audits the catalog and runs the A/B attack matrix on every table (TC-017-03-01), and prints the matrix into the TAP report uploaded as release-gate evidence. TC-017-03-02 injects five regressions in a rolled-back transaction (a leaking policy, unforced RLS, a table without tenant_id, an unreviewed DELETE grant and a BYPASSRLS role) and proves each is reported, and that the matrix detects the leak by behavior. Access paths above the database (HTTP ingress, commands, consumers, jobs) are covered by their own tenant-context tests. Remaining: run the gate against the deployed environment's roles once one exists.",
           "acceptance": [
             "The full tenant-isolation negative matrix runs for every tenant-owned table and access path.",
             "Any failure blocks the release pipeline and records reproducible evidence.",
@@ -35502,13 +35502,13 @@
               "id": "TC-017-03-01",
               "name": "Full tenant-isolation matrix",
               "type": "security",
-              "status": "not_run"
+              "status": "passing"
             },
             {
               "id": "TC-017-03-02",
               "name": "Injected regression blocks CI release",
               "type": "pipeline",
-              "status": "not_run"
+              "status": "passing"
             }
           ],
           "epicId": "SUB-E017",
