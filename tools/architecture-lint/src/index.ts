@@ -49,6 +49,16 @@ for (const layer of ["modules", "platform"]) {
   }
 }
 
+// Telemetry guardrail (decision D15): only platform/observability and apps/* use OpenTelemetry
+// directly; everything else goes through the PII-safe facade.
+const OTEL_IMPORT = /(?:from\s+|import\s*\(\s*)["']@opentelemetry\//;
+for (const layer of ["modules", "platform"]) {
+  for (const file of sourceFiles(resolve(root, layer))) {
+    if (/[\\/]platform[\\/]observability[\\/]/.test(file)) continue;
+    if (OTEL_IMPORT.test(readFileSync(file, "utf8"))) failures.push(`${relative(root, file)}: import telemetry from platform/observability, not @opentelemetry directly`);
+  }
+}
+
 // Commercial arithmetic guardrail (decision D5): money uses platform/money, never binary floating
 // point. A line may opt out only with an explicit `money-lint: allow <reason>` comment.
 const FLOAT_ARITHMETIC = /\bparseFloat\s*\(|\.toFixed\s*\(|\.toPrecision\s*\(|\bMath\.(?:round|floor|ceil|trunc|fround)\s*\(/;
@@ -71,5 +81,5 @@ if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exitCode = 1;
 } else {
-  console.log(`Architecture manifests valid: ${ownership.size} owned tables across ${moduleCount} module(s); no framework imports outside apps/*; ${arithmeticFiles} files pass the money guardrail.`);
+  console.log(`Architecture manifests valid: ${ownership.size} owned tables across ${moduleCount} module(s); no framework imports outside apps/*; OpenTelemetry only via platform/observability; ${arithmeticFiles} files pass the money guardrail.`);
 }

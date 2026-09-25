@@ -1,4 +1,5 @@
 import type { EventEnvelope } from "../../event-envelope/src/index.ts";
+import type { TraceCarrier } from "../../observability/src/index.ts";
 import type { TenantId } from "../../tenant-context/src/index.ts";
 
 export type OutboxStatus = "pending" | "leased" | "published" | "dead" | "skipped";
@@ -39,6 +40,8 @@ export interface OutboxEntry {
   readonly lastError?: string;
   readonly publishedAt?: string;
   readonly resolution?: DeadLetterResolution;
+  /** W3C trace context captured when the entry was written; hand-over continues that trace. */
+  readonly traceContext?: TraceCarrier;
 }
 
 /**

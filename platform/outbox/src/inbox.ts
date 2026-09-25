@@ -1,4 +1,5 @@
 import type { EventEnvelope } from "../../event-envelope/src/index.ts";
+import { SpanKind, setSpanAttributes, withSpan } from "../../observability/src/index.ts";
 import { problem } from "../../problem-model/src/index.ts";
 import type { InboxPersistence, InboxStore } from "./ports.ts";
 
@@ -32,16 +33,30 @@ export function createIdempotentConsumer<U extends { readonly inbox: InboxStore 
       correlationId: envelope.correlation_id,
       ...(nonBlank(envelope.causation_id) ? { causationId: envelope.causation_id } : {}),
     };
-    return dependencies.persistence.runInTransaction(scope, async (unitOfWork) => {
-      const outcome = await unitOfWork.inbox.tryRecord({
-        consumer: dependencies.consumer,
-        tenantId: envelope.tenant_id,
-        eventId: envelope.id,
-        now: dependencies.clock().toISOString(),
-      });
-      if (outcome === "duplicate") return { processed: false };
-      await dependencies.handle(envelope, unitOfWork);
-      return { processed: true };
-    });
+    return withSpan(
+      `consume ${envelope.type}`,
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          "messaging.system": "sintius",
+          "messaging.consumer.group.name": dependencies.consumer,
+          "sintius.event.type": envelope.type,
+          "sintius.correlation_id": envelope.correlation_id,
+        },
+      },
+      (span) =>
+        dependencies.persistence.runInTransaction(scope, async (unitOfWork) => {
+          const outcome = await unitOfWork.inbox.tryRecord({
+            consumer: dependencies.consumer,
+            tenantId: envelope.tenant_id,
+            eventId: envelope.id,
+            now: dependencies.clock().toISOString(),
+          });
+          setSpanAttributes(span, { "sintius.inbox.duplicate": outcome === "duplicate" });
+          if (outcome === "duplicate") return { processed: false };
+          await dependencies.handle(envelope, unitOfWork);
+          return { processed: true };
+        }),
+    );
   };
 }

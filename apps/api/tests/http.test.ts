@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { finishedSpans, metricValue, resetSpans, serializedTelemetry, testTelemetry } from "../../../platform/observability/tests/support.ts";
 import { PlatformProblem, problem, type UnexpectedErrorReport } from "../../../platform/problem-model/src/index.ts";
 import {
   currentTenantContext,
@@ -295,4 +296,29 @@ test("P0-002 request logs are labelled with the correlation ID and never include
     assert.equal(Object.hasOwn(line, "reqId"), false, "the default label is replaced");
   }
   assert.doesNotMatch(JSON.stringify(lines), /token-a/, "the bearer credential never reaches logs");
+});
+
+test("D15 each request is a server span named by its route, problems are counted by code, and nothing sensitive is exported", async () => {
+  testTelemetry();
+  const unauthorizedBefore = await metricValue("sintius.http.problems", { "sintius.problem.code": "authentication_failed", "http.response.status_code": 401 });
+  const internalBefore = await metricValue("sintius.http.problems", { "sintius.problem.code": "internal_error" });
+  resetSpans();
+  const { app } = harness({
+    proof: async () => {
+      throw new Error("db password=hunter2 exploded");
+    },
+  });
+  await post(app, "/v1/foundation/proofs", { label: "x" }, { "x-correlation-id": "corr-otel-401" });
+  await post(app, "/v1/foundation/proofs", { label: "x" }, { authorization: "Bearer token-a", "x-correlation-id": "corr-otel-500" });
+
+  const servers = finishedSpans().filter((span) => span.name === "POST /v1/foundation/proofs");
+  assert.deepEqual(
+    servers.map((span) => [span.attributes["sintius.correlation_id"], span.attributes["http.response.status_code"], span.attributes["sintius.problem.code"]]),
+    [["corr-otel-401", 401, "authentication_failed"], ["corr-otel-500", 500, "internal_error"]],
+  );
+  assert.equal(servers[1]!.status.code, 2, "a 5xx marks the server span as an error");
+  assert.notEqual(servers[0]!.status.code, 2, "a 401 is an outcome, not a fault");
+  assert.equal(await metricValue("sintius.http.problems", { "sintius.problem.code": "authentication_failed", "http.response.status_code": 401 }) - unauthorizedBefore, 1);
+  assert.equal(await metricValue("sintius.http.problems", { "sintius.problem.code": "internal_error" }) - internalBefore, 1);
+  assert.doesNotMatch(serializedTelemetry(finishedSpans()), /token-a|Bearer|hunter2/);
 });

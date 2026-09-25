@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eventScopeForPlatformCommand, eventScopeFromCurrentContext, type EventScope } from "../../event-envelope/src/index.ts";
+import { addSpanEvent, telemetryMetrics } from "../../observability/src/index.ts";
 import { problem, redactSensitiveText } from "../../problem-model/src/index.ts";
 import type { PlatformCommandContext, TenantId } from "../../tenant-context/src/index.ts";
 import { computeEvidenceHash, type AuditEvent, type UnsealedAuditEvent } from "./model.ts";
@@ -98,6 +99,7 @@ export function createAuditRecorder(dependencies: {
     try {
       await writer.append(event);
     } catch (error) {
+      telemetryMetrics.auditWriteFailure(input.action);
       try {
         dependencies.onWriteFailure?.({ action: input.action, tenantId: scope.tenantId, correlationId: scope.correlationId });
       } catch {
@@ -105,6 +107,7 @@ export function createAuditRecorder(dependencies: {
       }
       throw error;
     }
+    addSpanEvent("audit.recorded", { "sintius.audit.action": input.action, "sintius.audit.target_type": input.target.type });
     return event;
   }
 

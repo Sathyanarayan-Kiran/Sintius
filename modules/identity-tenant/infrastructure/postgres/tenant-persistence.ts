@@ -1,4 +1,5 @@
 import pg from "pg";
+import { appendOutboxEvent } from "../../../../platform/outbox/infrastructure/postgres/append.ts";
 import type { AuditEvent } from "../../../../platform/audit/src/index.ts";
 import type { EventEnvelope } from "../../../../platform/event-envelope/src/index.ts";
 import { createPostgresIdempotencyStore } from "../../../../platform/idempotency/infrastructure/postgres/store.ts";
@@ -133,16 +134,7 @@ function unitOfWork(client: SqlClient, boundTenantId: TenantId, isOpen: () => bo
       append: async (envelope: Readonly<EventEnvelope>) => {
         guard();
         assertTenantMatch(envelope.tenant_id, boundTenantId);
-        await client.query(
-          `INSERT INTO outbox_event (
-             tenant_id, event_id, event_type, aggregate_type, aggregate_id, aggregate_version,
-             envelope, next_attempt_at, appended_at
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)`,
-          [
-            envelope.tenant_id, envelope.id, envelope.type, envelope.aggregate_type, envelope.aggregate_id,
-            envelope.aggregate_version, JSON.stringify(envelope), envelope.recorded_at, envelope.recorded_at,
-          ],
-        );
+        await appendOutboxEvent(client, envelope);
       },
     },
   };

@@ -17,5 +17,16 @@ services:
     volumes:
       - sintius-postgres-data:/var/lib/postgresql/data
 
+  # Decision D15: local telemetry backend. OpenTelemetry Collector (OTLP on 4317/4318), Tempo,
+  # Prometheus, Loki and Grafana (http://127.0.0.1:3000) in one image. Opt-in: it starts only with
+  # `npm run observability:up`, never with `db:up`, and binds to loopback only.
+  observability:
+    image: grafana/otel-lgtm:0.33.1
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+
 volumes:
   sintius-postgres-data:

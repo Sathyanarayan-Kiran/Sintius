@@ -1,4 +1,5 @@
-import { problem } from "../../problem-model/src/index.ts";
+import { PlatformProblem, problem } from "../../problem-model/src/index.ts";
+import { setSpanAttributes, telemetryMetrics, withSpan, type IdempotencyOutcome } from "../../observability/src/index.ts";
 import {
   assertIssuedPlatformContext,
   assertNoTenantIdentity,
@@ -56,7 +57,35 @@ function deepFreeze<T>(value: T): T {
 function createScopedExecutor<U extends { readonly idempotency: IdempotencyStore }>(dependencies: ExecutorDependencies<U>) {
   const retentionSeconds = dependencies.retentionSeconds ?? DEFAULT_RETENTION_SECONDS;
 
+  /** Traced wrapper: one span per execution, and an outcome count for replay/conflict/pending-age signals. */
   return async function executeForScope(
+    context: TrustedExecutionScope,
+    request: IdempotentRequest,
+    authorize: () => Promise<void>,
+    work: (unitOfWork: U) => Promise<StoredResponse>,
+  ): Promise<IdempotentResult> {
+    const scope = SCOPE_PATTERN.test(request.scope) ? request.scope : "invalid";
+    return withSpan(
+      `command ${scope}`,
+      { attributes: { "sintius.command.scope": scope, "sintius.correlation_id": context.correlationId, "sintius.causation_id": context.causationId } },
+      async (span) => {
+        let outcome: IdempotencyOutcome = "failed";
+        try {
+          const result = await executeUntraced(context, request, authorize, work);
+          outcome = result.replayed ? "replayed" : "executed";
+          return result;
+        } catch (error) {
+          outcome = outcomeOf(error);
+          throw error;
+        } finally {
+          setSpanAttributes(span, { "sintius.idempotency.outcome": outcome });
+          telemetryMetrics.idempotency(scope, outcome);
+        }
+      },
+    );
+  };
+
+  async function executeUntraced(
     context: TrustedExecutionScope,
     request: IdempotentRequest,
     /** Runs before any lookup, so a replay can never bypass current authorization. */
@@ -134,7 +163,14 @@ function createScopedExecutor<U extends { readonly idempotency: IdempotencyStore
       await unitOfWork.idempotency.complete({ tenantId: context.tenantId, scope: request.scope, key, response: stored });
       return { response: stored, replayed: false };
     });
-  };
+  }
+}
+
+function outcomeOf(error: unknown): IdempotencyOutcome {
+  const code = error instanceof PlatformProblem ? error.problem.code : undefined;
+  if (code === "idempotency_key_reused_with_different_payload") return "conflict";
+  if (code === "request_in_progress") return "in_progress";
+  return code !== undefined && error instanceof PlatformProblem && error.problem.status < 500 ? "rejected" : "failed";
 }
 
 /** Idempotent execution for an established tenant context. */

@@ -13,3 +13,4 @@ import "../platform/audit/tests/audit.test.ts";
 import "../modules/foundation-proof/tests/proof-command.test.ts";
 import "../apps/api/tests/http.test.ts";
 import "../platform/money/tests/money.test.ts";
+import "../platform/observability/tests/observability.test.ts";
